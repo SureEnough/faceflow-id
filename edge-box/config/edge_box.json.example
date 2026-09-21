@@ -1,0 +1,30 @@
+{
+  "device_id": 1,
+  "device_psk": "dev-psk-change-me",
+  "report_endpoint": "http://127.0.0.1:8080/api/v1",
+  "report_interval_s": 60,
+  "det_thresh": 0.5,
+  "recog_thresh": 0.40,
+  "verify_thresh": 0.50,
+  "liveness_enabled": true,
+  "staff_enabled": true,
+  "retention_days": 365,
+  "max_frames": 0,
+  "cameras": [
+    {
+      "camera_id": "cam-01",
+      "url": "rtsp://192.168.1.20/stream1",
+      "role": "entrance",
+      "count_flow": true,
+      "direction": "both",
+      "virtual_line": { "x1": 200, "y1": 540, "x2": 1080, "y2": 540 }
+    },
+    {
+      "camera_id": "cam-02",
+      "url": "rtsp://192.168.1.21/stream1",
+      "role": "counter",
+      "count_flow": false,
+      "virtual_line": null
+    }
+  ]
+}

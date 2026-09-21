@@ -1,0 +1,38 @@
+package main
+
+import (
+	"log"
+
+	"admin-backend/internal/api"
+	"admin-backend/internal/config"
+	"admin-backend/internal/security"
+	"admin-backend/internal/storage"
+)
+
+func main() {
+	cfg := config.Load()
+
+	cip, err := security.NewCipher(cfg.AESKey)
+	if err != nil {
+		log.Fatalf("cipher init failed: %v", err)
+	}
+
+	db, err := storage.Open(cfg.DBDSN)
+	if err != nil {
+		log.Fatalf("db open failed: %v", err)
+	}
+	if err := storage.AutoMigrate(db); err != nil {
+		log.Fatalf("migrate failed: %v", err)
+	}
+
+	srv := api.NewServer(cfg, db, cip)
+	if err := srv.EnsureAdmin(); err != nil {
+		log.Fatalf("ensure admin failed: %v", err)
+	}
+	r := srv.Router()
+
+	log.Printf("admin-backend listening on %s (aes=%v)", cfg.HTTPAddr, cip.Enabled())
+	if err := r.Run(cfg.HTTPAddr); err != nil {
+		log.Fatalf("server exit: %v", err)
+	}
+}
