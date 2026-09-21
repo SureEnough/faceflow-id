@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'react'
 import { Alert, Card, Col, Row, Space, Statistic, Typography } from 'antd'
+import dayjs from 'dayjs'
 import { get, errMsg } from '../api/client'
-import { fetchDeviceTree } from '../api'
+import { fetchDeviceTree, fetchFlowStats } from '../api'
+import type { FlowRow } from '../api/types'
+import EChart from '../components/EChart'
 
 export default function Dashboard() {
   const [health, setHealth] = useState<string>('')
   const [online, setOnline] = useState(0)
   const [total, setTotal] = useState(0)
   const [error, setError] = useState('')
+  const [flow, setFlow] = useState<FlowRow[]>([])
 
   useEffect(() => {
     get<{ status: string; time: string }>('/health').then((d) => setHealth(d.status)).catch(() => setHealth('down'))
@@ -17,6 +21,14 @@ export default function Dashboard() {
         setOnline(items.filter((i) => i.status === 1).length)
       })
       .catch((e) => setError(errMsg(e)))
+    // 近 7 天客流趋势
+    fetchFlowStats({
+      granularity: 'day',
+      start_at: dayjs().subtract(7, 'day').startOf('day').toISOString(),
+      end_at: dayjs().endOf('day').toISOString(),
+    })
+      .then((r) => setFlow(r.items))
+      .catch(() => setFlow([]))
   }, [])
 
   return (
@@ -45,10 +57,25 @@ export default function Dashboard() {
           </Card>
         </Col>
       </Row>
-      <Card size="small">
-        <Typography.Text type="secondary">
-          系统由三端组成：边缘盒子人脸识别端 / 顾客录入电脑端 / 管理后台。本后台覆盖：设备树、人员库、客流统计、员工通行、历史来访回查。
-        </Typography.Text>
+      <Card size="small" title="近 7 天客流趋势（顾客）">
+        {flow.length > 0 ? (
+          <EChart
+            height={240}
+            option={{
+              tooltip: { trigger: 'axis' },
+              legend: { data: ['进店', '出店'] },
+              grid: { left: 40, right: 20, top: 30, bottom: 24 },
+              xAxis: { type: 'category', data: flow.map((r) => r.bucket) },
+              yAxis: { type: 'value', minInterval: 1 },
+              series: [
+                { name: '进店', type: 'line', smooth: true, data: flow.map((r) => r.in), areaStyle: { opacity: 0.15 } },
+                { name: '出店', type: 'line', smooth: true, data: flow.map((r) => r.out), areaStyle: { opacity: 0.15 } },
+              ],
+            }}
+          />
+        ) : (
+          <Typography.Text type="secondary">暂无数据（可运行 python3 admin-backend/scripts/demo_seed.py 造演示数据）</Typography.Text>
+        )}
       </Card>
     </Space>
   )
