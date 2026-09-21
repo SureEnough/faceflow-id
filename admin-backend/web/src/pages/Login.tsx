@@ -38,7 +38,7 @@ export default function Login() {
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f0f2f5' }}>
-      <Card style={{ width: 380 }} title={<Typography.Title level={4} style={{ margin: 0 }}>🏪 客流管理系统</Typography.Title>}>
+      <Card style={{ width: 380 }} title={<Typography.Title level={4} style={{ margin: 0 }}>🏪 FaceFlow</Typography.Title>}>
         <Form onFinish={submit} layout="vertical" initialValues={{ username: 'admin', password: '' }}>
           <Form.Item name="username" label="用户名" rules={[{ required: true, message: '请输入用户名' }]}>
             <Input prefix={<UserOutlined />} placeholder="admin" autoComplete="username" />

@@ -38,7 +38,7 @@ export default function AdminLayout() {
     <Layout style={{ minHeight: '100vh' }}>
       <Sider width={220} theme="dark">
         <div style={{ padding: 16, color: '#fff', fontWeight: 600, fontSize: 15 }}>
-          🏪 客流管理系统
+          🏪 FaceFlow
         </div>
         <Menu
           theme="dark"

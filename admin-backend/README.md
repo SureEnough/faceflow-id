@@ -1,6 +1,6 @@
 # admin-backend 管理后台（Go）
 
-智能人脸客流采集与身份证核验系统 —— 管理后台服务（Go + Gin + GORM）。
+FaceFlow · 智脸客流人证系统 —— 管理后台服务（Go + Gin + GORM）。
 
 ## 目录结构
 
