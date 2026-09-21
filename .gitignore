@@ -21,4 +21,5 @@ tmp/
 
 # 环境变量
 .env
-.env.local*.tsbuildinfo
+.env.local
+*.tsbuildinfo
