@@ -63,9 +63,13 @@ cp config/edge_box.json.example edge_box.json   # 按门店改摄像头/虚拟�
 - **内部人员排除**：1:N 命中 `person_type=1` 标记 STAFF，不入顾客客流；`count_flow=false` 的摄像头只识别不计数。
 - **多路调度**：当前骨架为单线程轮询（`main.cpp`），生产按文档 4.1.6 拆为每路一线程 + 帧队列。
 
+## 实现状态
+
+- ✅ ONNXRuntime 后端核心：SCRFD 检测（动态读取输入/输出名、解码/缩放回原图、IoU NMS）、ArcFace 特征（BGR→RGB、(v-127.5)/128、L2 归一化）、RGB 活体（0~1 概率）
+- ⏳ 待真机标定：检测/识别阈值、模型输入尺寸（默认 640/112）、关键点启用
+
 ## 待完善（骨架后续迭代）
 
-- ONNXRuntime 后端完整实现（SCRFD decode/NMS、ArcFace 预处理、活体推理）
 - 人员库增量同步（轮询 `GET /customers/features/sync`，内部人员仅收工号哈希）
 - SQLite `recognition_store.cpp` 实现、断网续传补偿
 - cpp-httplib 上报实现（组装 JSON、幂等去重、token 鉴权）
