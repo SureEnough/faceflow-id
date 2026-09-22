@@ -41,6 +41,6 @@ cmake --build build -j4
 - ✅ 1:1 人证比对逻辑（verify_logic，纯 C++ 可单测）
 - ✅ 后台 REST 客户端（设备注册/登录、人员录入、核验上报、历史回查）
 - ✅ Qt 主窗口骨架（读卡 → 抓帧 → 比对 → 录入）
-- ⏳ 特征提取：接 ONNXRuntime（SCRFD + ArcFace）提取现场/证件照特征（当前为演示占位）
-- ⏳ 活体检测接入（防照片攻击，文档 5.2）
+- ✅ 特征提取层（src/feature/）：ONNXRuntime 真实现（SCRFD 检测 + 5 点对齐 + ArcFace 512 维，与 edge-box 同一向量空间），无 ORT 时 Mock 回退，纯 C++ 单测通过
+- ✅ 活体检测接入（src/feature/：RGB 活体模型得分 0~1，无模型视为不检测）
 - ⏳ 华视 CVR-100U / 精伦 IDR210 厂商 SDK 适配
