@@ -3,6 +3,11 @@
 #include <algorithm>
 #include <sstream>
 
+namespace {
+// 区间交集长度：min(右边界) - max(左边界)
+float Inter(float ar, float br) { return std::min(ar, br); }
+}  // namespace
+
 namespace eb {
 
 float IOUTracker::IoU(const Track& t, const FaceBox& b) {

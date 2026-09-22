@@ -2,6 +2,7 @@
 // 单路视频流水线：采集 → 检测/跟踪 → 特征 → 1:N → 客流 → 入库。
 #pragma once
 
+#include <atomic>
 #include <memory>
 
 #include "backend/inference_backend.h"
@@ -30,7 +31,12 @@ class Pipeline {
   bool ProcessOneFrame();
   void Run(int max_frames);   // 循环处理；max_frames<=0 无限（Ctrl+C 退出）
 
-  const FlowStats& flow() const { return flow_->stats(); }
+  // 返回当前客流统计（值语义：无虚拟线/未启用时为 0 计数，
+  // 避免悬挂引用——FlowStats 由成员持有，这里按值返回更安全）
+  FlowStats flow() const { return flow_ ? flow_->stats() : FlowStats{}; }
+  // 线程安全运行统计（多线程流水线下由 worker 线程更新，状态板/主线程只读）
+  int64_t Frames() const { return frames_.load(); }
+  bool LastFrameOk() const { return last_frame_ok_.load(); }
   const std::string& camera_id() const { return cam_.camera_id; }
 
  private:
@@ -46,6 +52,8 @@ class Pipeline {
   std::unique_ptr<VideoSource> video_;
   IOUTracker tracker_;
   std::unique_ptr<FlowCounter> flow_;
+  std::atomic<int64_t> frames_{0};
+  std::atomic<bool> last_frame_ok_{true};
 };
 
 }  // namespace eb

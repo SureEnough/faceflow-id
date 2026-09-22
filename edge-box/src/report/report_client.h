@@ -17,7 +17,7 @@ class ReportClient {
   virtual bool Upload(int64_t device_id, const std::vector<Recognition>& records) = 0;
 };
 
-// 创建上报客户端：有 cpp-httplib 时走 HTTP，否则打印（自测模式）
+// 创建上报客户端：有 cpp-httplib 时走 HTTP（含设备登录/重登），否则打印（自测模式）
 ReportClient* CreateReportClient(const std::string& endpoint, const std::string& psk);
 
 }  // namespace eb

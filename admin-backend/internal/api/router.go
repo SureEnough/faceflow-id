@@ -2,6 +2,7 @@ package api
 
 import (
 	"admin-backend/internal/config"
+	"admin-backend/internal/object"
 	"admin-backend/internal/security"
 
 	"github.com/gin-gonic/gin"
@@ -13,10 +14,16 @@ type Server struct {
 	cfg config.Config
 	db  *gorm.DB
 	cip *security.Cipher
+	obj object.Storage // 可为 nil（快照入库时跳过上传，仅记文本）
 }
 
-func NewServer(cfg config.Config, db *gorm.DB, cip *security.Cipher) *Server {
-	return &Server{cfg: cfg, db: db, cip: cip}
+// NewServer 创建 API 服务器；obj 为可选对象存储（生产传入 MinIO/S3 实现）
+func NewServer(cfg config.Config, db *gorm.DB, cip *security.Cipher, obj ...object.Storage) *Server {
+	s := &Server{cfg: cfg, db: db, cip: cip}
+	if len(obj) > 0 {
+		s.obj = obj[0]
+	}
+	return s
 }
 
 // secret JWT 签名密钥
@@ -32,6 +39,7 @@ func (s *Server) Router() *gin.Engine {
 
 		// 设备（注册/心跳无需自动登录；设备树需鉴权）
 		api.POST("/auth/login", s.login)
+		api.POST("/auth/device/login", s.deviceLogin)
 		api.POST("/devices/register", s.registerDevice)
 		api.POST("/devices/:id/heartbeat", s.deviceHeartbeat)
 
@@ -40,6 +48,7 @@ func (s *Server) Router() *gin.Engine {
 			// 设备/记录/统计/查询：任意已登录 token（含设备 token）
 			authed.GET("/devices", s.deviceTree)
 			authed.GET("/devices/:id/config", s.deviceConfig)
+			authed.PUT("/devices/:id/config", requireRole("admin", "operator"), s.updateDeviceConfig)
 			authed.POST("/records/recognition/batch", s.batchRecognition)
 			authed.POST("/records/verify", s.createVerify)
 			authed.POST("/history/search", s.historySearch)

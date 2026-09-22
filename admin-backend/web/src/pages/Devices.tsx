@@ -1,8 +1,18 @@
-import { useEffect, useState } from 'react'
-import { Badge, Card, Space, Tag, Tree, Typography, Spin, Alert } from 'antd'
+import { useEffect, useMemo, useState } from 'react'
+import { Alert, Button, Card, Form, Input, Modal, Select, Space, Tag, Tree, Typography, Spin, message } from 'antd'
 import type { TreeDataNode } from 'antd'
-import { fetchDeviceTree } from '../api'
+import { SettingOutlined } from '@ant-design/icons'
+import { fetchDeviceConfig, fetchDeviceTree, pushDeviceConfig } from '../api'
 import { DEVICE_TYPE_TEXT, type Device } from '../api/types'
+
+function flatten(items: Device[], depth = 0): { id: number; key: string; device_type: number }[] {
+  const out: { id: number; key: string; device_type: number }[] = []
+  for (const d of items) {
+    out.push({ id: d.id, key: `${'　'.repeat(depth)}${d.name} (#${d.id})`, device_type: d.device_type })
+    if (d.children?.length) out.push(...flatten(d.children, depth + 1))
+  }
+  return out
+}
 
 function toTree(items: Device[]): TreeDataNode[] {
   return items.map((d) => ({
@@ -13,7 +23,7 @@ function toTree(items: Device[]): TreeDataNode[] {
           {DEVICE_TYPE_TEXT[d.device_type as keyof typeof DEVICE_TYPE_TEXT] ?? '设备'}
         </Tag>
         <span>{d.name}</span>
-        <Badge status={d.status === 1 ? 'success' : 'error'} text={d.status === 1 ? '在线' : '离线'} />
+        <Typography.Text type="secondary">{d.id}</Typography.Text>
         {d.device_key && <Typography.Text type="secondary">{d.device_key}</Typography.Text>}
       </Space>
     ),
@@ -23,24 +33,111 @@ function toTree(items: Device[]): TreeDataNode[] {
 
 export default function Devices() {
   const [tree, setTree] = useState<TreeDataNode[]>([])
+  const [options, setOptions] = useState<{ id: number; key: string; device_type: number }[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
-  useEffect(() => {
+  // 配置下发弹窗
+  const [pushOpen, setPushOpen] = useState(false)
+  const [pushLoading, setPushLoading] = useState(false)
+  const [pushForm] = Form.useForm<{ device_id: number; config: string }>()
+
+  const loadTree = () =>
     fetchDeviceTree()
-      .then((items) => setTree(toTree(items)))
+      .then((items) => {
+        setTree(toTree(items))
+        setOptions(flatten(items).filter((d) => [1, 2].includes(d.device_type))) // 仅主设备
+      })
       .catch((e) => setError(String(e?.message ?? e)))
       .finally(() => setLoading(false))
+
+  useEffect(() => {
+    loadTree()
   }, [])
 
+  const deviceOptions = useMemo(
+    () => options.map((o) => ({ value: o.id, label: o.key })),
+    [options],
+  )
+
+  const onSelectDevice = async (id: number) => {
+    setPushLoading(true)
+    try {
+      const { config } = await fetchDeviceConfig(id)
+      pushForm.setFieldsValue({ device_id: id, config: JSON.stringify(config ?? {}, null, 2) })
+    } catch (e) {
+      message.error(String((e as Error).message ?? e))
+    } finally {
+      setPushLoading(false)
+    }
+  }
+
+  const onPush = async () => {
+    const values = await pushForm.validateFields()
+    let parsed: Record<string, unknown>
+    try {
+      parsed = JSON.parse(values.config)
+    } catch {
+      message.error('配置不是合法 JSON')
+      return
+    }
+    setPushLoading(true)
+    try {
+      const res = await pushDeviceConfig(values.device_id, parsed)
+      message.success(`已下发设备 #${res.device_id}，门店边缘盒将在轮询周期内热重载`)
+      setPushOpen(false)
+    } catch (e) {
+      message.error(String((e as Error).message ?? e))
+    } finally {
+      setPushLoading(false)
+    }
+  }
+
   return (
-    <Card title="设备树（门店 → 主设备 → 子设备）">
+    <Card
+      title="设备树（门店 → 主设备 → 子设备）"
+      extra={
+        <Button icon={<SettingOutlined />} onClick={() => setPushOpen(true)}>
+          配置下发
+        </Button>
+      }
+    >
       {error && <Alert type="error" showIcon message={error} style={{ marginBottom: 12 }} />}
       {loading ? (
         <Spin />
       ) : (
         <Tree showLine defaultExpandAll treeData={tree} />
       )}
+
+      <Modal
+        title="向主设备下发配置（远程配置优先，门店边缘盒轮询后自动应用）"
+        open={pushOpen}
+        onCancel={() => setPushOpen(false)}
+        onOk={onPush}
+        confirmLoading={pushLoading}
+        width={720}
+        okText="下发"
+        cancelText="取消"
+      >
+        <Form form={pushForm} layout="vertical">
+          <Form.Item name="device_id" label="主设备" rules={[{ required: true, message: '请选择设备' }]}>
+            <Select
+              showSearch
+              placeholder="选择边缘盒 / 录入电脑端"
+              options={deviceOptions}
+              onSelect={onSelectDevice}
+              loading={pushLoading}
+            />
+          </Form.Item>
+          <Form.Item
+            name="config"
+            label="配置 JSON（cameras / 阈值 / report_endpoint 等；设备身份与 Web 安全字段以本地为准）"
+            rules={[{ required: true, message: '请输入配置 JSON' }]}
+          >
+            <Input.TextArea rows={14} style={{ fontFamily: 'monospace' }} placeholder='{\n  "det_thresh": 0.5,\n  "cameras": [...]\n}' />
+          </Form.Item>
+        </Form>
+      </Modal>
     </Card>
   )
 }

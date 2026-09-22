@@ -1,6 +1,10 @@
 package api
 
 import (
+	"bytes"
+	"context"
+	"encoding/base64"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -15,6 +19,7 @@ type recogRecord struct {
 	PersonType   int8   `json:"person_type"`
 	FaceFeature  string `json:"face_feature"`
 	Snapshot     string `json:"snapshot"`
+	SnapshotMime string `json:"snapshot_mime"`
 	Similarity   float32 `json:"similarity"`
 	Direction    int8   `json:"direction"`
 	CameraID     string `json:"camera_id"`
@@ -36,6 +41,23 @@ func (s *Server) batchRecognition(c *gin.Context) {
 
 	accepted, skipped := 0, 0
 	for _, r := range req.Records {
+		// 快照：对象存储打开时写入（minio/s3），否则仅保留文本（开发）
+		if s.obj != nil && r.Snapshot != "" {
+			if b, err := base64.StdEncoding.DecodeString(r.Snapshot); err == nil && len(b) > 0 {
+				key := fmt.Sprintf("snapshots/%d/%s.jpg", time.Now().Unix(), r.TrackID)
+				ct := r.SnapshotMime
+				if ct == "" {
+					if len(b) > 2 && b[0] == 'B' && b[1] == 'M' {
+						ct = "image/bmp"
+					} else {
+						ct = "image/jpeg"
+					}
+				}
+				if err := s.obj.Put(context.Background(), key, bytes.NewReader(b), ct); err == nil {
+					r.Snapshot = key // 入库存对象 key（前端经 URL(key) 取图）
+				}
+			}
+		}
 		ts, err := time.Parse(time.RFC3339, r.CreatedAt)
 		if err != nil {
 			skipped++
@@ -53,6 +75,7 @@ func (s *Server) batchRecognition(c *gin.Context) {
 			PersonType:  r.PersonType,
 			FaceFeature: feat,
 			Snapshot:    r.Snapshot,
+			SnapshotMime: r.SnapshotMime,
 			Similarity:  r.Similarity,
 			Direction:   r.Direction,
 			CameraID:    r.CameraID,

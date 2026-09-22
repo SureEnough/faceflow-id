@@ -1,0 +1,18 @@
+{
+  "name": "faceflow-e2e",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "FaceFlow 统一 E2E：边缘盒 Web 控制台 + admin-backend 管理后台（Playwright）",
+  "scripts": {
+    "e2e": "playwright test",
+    "e2e:edge": "playwright test --project=edge-box",
+    "e2e:admin": "playwright test --project=admin",
+    "e2e:install": "playwright install chromium",
+    "e2e:report": "playwright show-report playwright-report",
+    "e2e:open": "playwright test --ui"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.40.0"
+  }
+}

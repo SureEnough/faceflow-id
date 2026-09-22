@@ -1,6 +1,10 @@
+// edge-box/src/face/face_engine.cpp
 #include "face/face_engine.h"
 
 #include <algorithm>
+#include <cmath>
+
+#include "face/face_align.h"
 
 namespace eb {
 
@@ -10,11 +14,29 @@ bool FaceEngine::Detect(const ImageFrame& frame, float thresh, std::vector<FaceB
 
 bool FaceEngine::AlignCrop(const ImageFrame& frame, const FaceBox& box, ImageFrame& aligned) {
   constexpr int kSize = 112;
-  aligned = ImageFrame{};
-  aligned.width = kSize; aligned.height = kSize; aligned.channels = frame.channels;
-  aligned.data.resize(static_cast<size_t>(kSize) * kSize * aligned.channels);
+  // 优先使用 5 点关键点相似变换（ArcFace 标准 align，文档 15.2）；
+  // 无关键点（如 yolo 类导出或 mock 后端）时回退到按框中心裁剪。
+  bool hasKps = false;
+  for (int k = 0; k < 5; ++k) {
+    if (box.kps[k * 2] != 0.f || box.kps[k * 2 + 1] != 0.f) {
+      hasKps = true;
+      break;
+    }
+  }
+  if (hasKps) {
+    std::array<std::pair<float, float>, 5> src, dst;
+    for (int i = 0; i < 5; ++i) {
+      src[i] = {box.kps[i * 2], box.kps[i * 2 + 1]};
+      dst[i] = {align::ArcFaceDst112()[i].first, align::ArcFaceDst112()[i].second};
+    }
+    align::Similarity sim;
+    if (align::EstimateSimilarity(src, dst, sim)) {
+      align::WarpAffine(frame, sim, kSize, kSize, aligned);
+      return true;
+    }
+  }
 
-  // 按框（适当外扩 20%）中心裁剪并缩放至 112x112（双线性；骨架用最近邻简化）
+  // 回退：按框（外扩 20%）中心裁剪并缩放至 112x112（双线性）
   const int pad_x = static_cast<int>(box.w * 0.1f);
   const int pad_y = static_cast<int>(box.h * 0.1f);
   const int sx = std::max(0, static_cast<int>(box.x) - pad_x);
@@ -24,6 +46,9 @@ bool FaceEngine::AlignCrop(const ImageFrame& frame, const FaceBox& box, ImageFra
   const int sw = std::max(1, ex - sx);
   const int sh = std::max(1, ey - sy);
 
+  aligned = ImageFrame{};
+  aligned.width = kSize; aligned.height = kSize; aligned.channels = frame.channels;
+  aligned.data.resize(static_cast<size_t>(kSize) * kSize * aligned.channels);
   for (int y = 0; y < kSize; ++y) {
     int src_y = sy + (y * sh) / kSize;
     src_y = std::min(src_y, frame.height - 1);

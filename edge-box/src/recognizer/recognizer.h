@@ -24,6 +24,9 @@ class Recognizer {
   // 追加/更新单个
   void Upsert(const Identity& identity);
 
+  // 删除单个（人员失效/注销时从本地库移除）
+  void Remove(int64_t customer_id);
+
   // 1:N 检索：返回相似度最高且 >= threshold 的结果
   MatchResult Search(const Feature& query, float threshold) const;
 

@@ -52,6 +52,11 @@ export async function post<T>(url: string, body?: unknown): Promise<T> {
   const { data } = await client.post<ApiResp<T>>(url, body)
   return data.data
 }
+
+export async function put<T>(url: string, body?: unknown): Promise<T> {
+  const { data } = await client.put<ApiResp<T>>(url, body)
+  return data.data
+}
 // 统一提取错误消息（后端 Error / 网络错误）
 export function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : String(e)

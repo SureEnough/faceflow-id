@@ -90,6 +90,138 @@ func login(t *testing.T, base, user, pass string) string {
 	return d.Token
 }
 
+func TestDeviceLoginToken(t *testing.T) {
+	ts, close := newTestServer(t)
+	defer close()
+	base := ts.URL + "/api/v1"
+
+	// 注册主设备（边缘盒）
+	out, status := doJSON(t, http.MethodPost, base+"/devices/register", map[string]any{
+		"device_type": 1, "name": "边缘盒-登录", "store_id": 1, "psk": "test-psk",
+	}, "")
+	if status != 200 || out.Code != 0 {
+		t.Fatalf("register: %d %s", out.Code, out.Message)
+	}
+	var edge struct{ DeviceID uint64 `json:"device_id"` }
+	_ = json.Unmarshal(out.Data, &edge)
+
+	// 错误 psk → 401
+	_, status = doJSON(t, http.MethodPost, base+"/auth/device/login", map[string]any{
+		"device_id": edge.DeviceID, "psk": "wrong",
+	}, "")
+	if status != 401 {
+		t.Fatalf("wrong psk should 401, got %d", status)
+	}
+
+	// 正确 psk → token
+	out, status = doJSON(t, http.MethodPost, base+"/auth/device/login", map[string]any{
+		"device_id": edge.DeviceID, "psk": "test-psk",
+	}, "")
+	if status != 200 || out.Code != 0 {
+		t.Fatalf("login: %d %s", out.Code, out.Message)
+	}
+	var d struct {
+		Token     string `json:"token"`
+		ExpiresIn int64  `json:"expires_in"`
+	}
+	_ = json.Unmarshal(out.Data, &d)
+	if d.Token == "" || d.ExpiresIn <= 0 {
+		t.Fatalf("token missing")
+	}
+
+	// 设备 token 可访问鉴权接口（设备树）
+	_, status = doJSON(t, http.MethodGet, base+"/devices", nil, d.Token)
+	if status != 200 {
+		t.Fatalf("device token on /devices should 200, got %d", status)
+	}
+
+	// 不存在的设备 → 401
+	_, status = doJSON(t, http.MethodPost, base+"/auth/device/login", map[string]any{
+		"device_id": 999999, "psk": "test-psk",
+	}, "")
+	if status != 401 {
+		t.Fatalf("missing device should 401, got %d", status)
+	}
+}
+
+func TestDeviceConfigPushAndHeartbeat(t *testing.T) {
+	ts, close := newTestServer(t)
+	defer close()
+	base := ts.URL + "/api/v1"
+
+	// 注册边缘盒 + 子摄像头
+	out, status := doJSON(t, http.MethodPost, base+"/devices/register", map[string]any{
+		"device_type": 1, "name": "边缘盒-下发", "store_id": 1, "psk": "test-psk",
+	}, "")
+	if status != 200 {
+		t.Fatalf("register edge: %d", status)
+	}
+	var edge struct {
+		DeviceID uint64 `json:"device_id"`
+		Token    string `json:"token"`
+	}
+	_ = json.Unmarshal(out.Data, &edge)
+	_, status = doJSON(t, http.MethodPost, base+"/devices/register", map[string]any{
+		"device_type": 3, "parent_id": edge.DeviceID, "device_key": "cam-01",
+		"name": "cam-01", "store_id": 1, "psk": "test-psk",
+	}, "")
+	if status != 200 {
+		t.Fatalf("register cam: %d", status)
+	}
+
+	// 心跳（免鉴权）：主设备 + 子设备上线
+	out, status = doJSON(t, http.MethodPost, fmt.Sprintf("%s/devices/%d/heartbeat", base, edge.DeviceID),
+		map[string]any{"status": 1, "sub_devices": []map[string]any{
+			{"device_key": "cam-01", "type": 3, "online": true},
+		}}, "")
+	if status != 200 || out.Code != 0 {
+		t.Fatalf("heartbeat: %d %s", out.Code, out.Message)
+	}
+
+	// 配置下发（admin）
+	token := login(t, base, "admin", "admin123")
+	cfgPayload := map[string]any{
+		"config": map[string]any{
+			"device_id": 99, "det_thresh": 0.66,
+			"cameras": []map[string]any{{"camera_id": "cam-01", "url": "rtsp://x"}},
+		},
+	}
+	out, status = doJSON(t, http.MethodPut, fmt.Sprintf("%s/devices/%d/config", base, edge.DeviceID), cfgPayload, token)
+	if status != 200 || out.Code != 0 {
+		t.Fatalf("push config: %d %s", out.Code, out.Message)
+	}
+
+	// 拉取确认
+	out, status = doJSON(t, http.MethodGet, fmt.Sprintf("%s/devices/%d/config", base, edge.DeviceID), nil, token)
+	if status != 200 {
+		t.Fatalf("get config: %d", status)
+	}
+	var cfg struct {
+		Config map[string]any `json:"config"`
+	}
+	_ = json.Unmarshal(out.Data, &cfg)
+	if cfg.Config == nil || cfg.Config["det_thresh"] != 0.66 {
+		t.Fatalf("config not pushed: %+v", cfg.Config)
+	}
+
+	// 非法配置（数组）→ 400
+	_, status = doJSON(t, http.MethodPut, fmt.Sprintf("%s/devices/%d/config", base, edge.DeviceID),
+		map[string]any{"config": []any{1, 2}}, token)
+	if status != 400 {
+		t.Fatalf("array config should 400, got %d", status)
+	}
+
+	// 设备 token 也能拉配置（authed），但不能下发（requireRole 拒绝）
+	_, status = doJSON(t, http.MethodGet, fmt.Sprintf("%s/devices/%d/config", base, edge.DeviceID), nil, edge.Token)
+	if status != 200 {
+		t.Fatalf("device token get config: %d", status)
+	}
+	_, status = doJSON(t, http.MethodPut, fmt.Sprintf("%s/devices/%d/config", base, edge.DeviceID), cfgPayload, edge.Token)
+	if status != 403 {
+		t.Fatalf("device token push should 403, got %d", status)
+	}
+}
+
 func featureBase64() string {
 	f := make([]byte, 512*4) // 2048B = 512×float32
 	for i := range f {

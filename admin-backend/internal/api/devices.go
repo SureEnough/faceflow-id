@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
@@ -14,6 +15,48 @@ import (
 )
 
 func nowUTC() string { return time.Now().UTC().Format(time.RFC3339) }
+
+type deviceLoginReq struct {
+	DeviceID uint64 `json:"device_id" binding:"required"`
+	PSK      string `json:"psk" binding:"required"`
+}
+
+// POST /auth/device/login 设备登录（重新签发设备 token，dev=true claim）
+// 校验：psk == 后台 DEVICE_PSK（与设备注册同约定；生产可改为按设备 psk_hash 校验）
+func (s *Server) deviceLogin(c *gin.Context) {
+	var req deviceLoginReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		Fail(c, http.StatusBadRequest, CodeParam, err.Error())
+		return
+	}
+	if req.PSK != s.cfg.DevicePSK {
+		Fail(c, http.StatusUnauthorized, CodeUnauth, "invalid psk")
+		return
+	}
+	var dev storage.Device
+	if err := s.db.First(&dev, req.DeviceID).Error; err != nil {
+		Fail(c, http.StatusUnauthorized, CodeUnauth, "device not found")
+		return
+	}
+	if dev.ParentID != nil {
+		Fail(c, http.StatusForbidden, CodeParam, "sub-device cannot login")
+		return
+	}
+	// 刷新在线状态
+	now := time.Now().Unix()
+	if err := s.db.Model(&storage.Device{}).Where("id = ?", dev.ID).
+		Updates(map[string]any{"status": 1, "last_heartbeat": now, "updated_at": now}).Error; err != nil {
+		Fail(c, http.StatusInternalServerError, CodeServer, err.Error())
+		return
+	}
+	token, err := auth.Sign(s.secret(), int64(dev.ID), "device", true, tokenTTLDevice)
+	if err != nil {
+		Fail(c, http.StatusInternalServerError, CodeServer, err.Error())
+		return
+	}
+	OK(c, gin.H{"token": token, "token_type": "Bearer", "expires_in": tokenTTLDevice, "device_id": dev.ID})
+}
+
 
 // --- 注册 ---
 
@@ -223,6 +266,46 @@ func (s *Server) deviceConfig(c *gin.Context) {
 		return
 	}
 	OK(c, gin.H{"device_id": dev.ID, "config": jsonRaw(dev.ConfigJSON)})
+}
+
+// PUT /devices/:id/config 下发主设备配置（admin/operator；config 必须为 JSON 对象）
+func (s *Server) updateDeviceConfig(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		Fail(c, http.StatusBadRequest, CodeParam, "invalid device id")
+		return
+	}
+	var req struct {
+		Config json.RawMessage `json:"config" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		Fail(c, http.StatusBadRequest, CodeParam, err.Error())
+		return
+	}
+	var obj map[string]any
+	if err := json.Unmarshal(req.Config, &obj); err != nil || obj == nil {
+		Fail(c, http.StatusBadRequest, CodeParam, "config must be a JSON object")
+		return
+	}
+	compact, err := json.Marshal(obj)
+	if err != nil {
+		Fail(c, http.StatusInternalServerError, CodeServer, err.Error())
+		return
+	}
+	now := time.Now().Unix()
+	res := s.db.Model(&storage.Device{}).Where("id = ?", id).
+		Updates(map[string]any{"config_json": string(compact), "updated_at": now})
+	if res.Error != nil {
+		Fail(c, http.StatusInternalServerError, CodeServer, res.Error.Error())
+		return
+	}
+	if res.RowsAffected == 0 {
+		Fail(c, http.StatusNotFound, CodeNotFound, "device not found")
+		return
+	}
+	s.audit(c, "update_device_config", "device", int64(id), "config=object")
+	auditDone(c)
+	OK(c, gin.H{"device_id": id, "updated_at": now})
 }
 
 func jsonRaw(s string) any {

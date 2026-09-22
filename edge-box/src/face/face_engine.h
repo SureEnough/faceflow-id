@@ -23,7 +23,7 @@ class FaceEngine {
   explicit FaceEngine(IInferenceBackend* backend) : backend_(backend) {}
 
   bool Detect(const ImageFrame& frame, float thresh, std::vector<FaceBox>& out);
-  // 由框裁剪对齐图（骨架：按框中心缩放至 112x112；真实实现应使用 5 点关键点仿射）
+  // 由框对齐裁剪图（112x112）：有 5 点关键点时用相似变换（ArcFace 标准 align），否则按框裁剪
   bool AlignCrop(const ImageFrame& frame, const FaceBox& box, ImageFrame& aligned);
   // 完整采样：检测 → 质量最优框 → 对齐 → 特征 + 活体
   bool Sample(const ImageFrame& frame, float det_thresh, FaceSample& out);

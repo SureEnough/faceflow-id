@@ -3,6 +3,8 @@
 #include <chrono>
 #include <thread>
 
+#include "common/image_codec.h"
+
 namespace eb {
 
 Pipeline::Pipeline(CameraConfig cam, int64_t device_id, FaceEngine* face, Recognizer* recognizer,
@@ -25,7 +27,12 @@ bool Pipeline::Open() {
 
 bool Pipeline::ProcessOneFrame() {
   ImageFrame frame;
-  if (!video_->Read(frame)) return false;
+  if (!video_->Read(frame)) {
+    last_frame_ok_.store(false);
+    return false;
+  }
+  last_frame_ok_.store(true);
+  frames_.fetch_add(1);
 
   // 1. 检测 + 采样（得分最高框）
   FaceSample sample;
@@ -57,7 +64,8 @@ bool Pipeline::ProcessOneFrame() {
     }
   }
 
-  // 5. 入库（匿名轨迹也保存，供历史来访回查）
+  // 5. 入库（仅新轨迹一次，避免同 track 每帧重复；匿名轨迹也保存供历史回查）
+  if (track.alive != 1) return true;
   Recognition rec;
   rec.track_id = track.id;
   rec.customer_id = match.hit ? match.customer_id : -1;
@@ -66,6 +74,17 @@ bool Pipeline::ProcessOneFrame() {
   rec.direction = dir;
   rec.camera_id = cam_.camera_id;
   rec.created_at = std::time(nullptr);
+  // 新轨迹首帧抓拍对齐人脸图（A2：快照上报；生产走 JPEG，无依赖时 BMP）
+  if (track.alive == 1) {
+    ImageFrame aligned;
+    if (face_->AlignCrop(frame, sample.box, aligned)) {
+      std::string b64, mime;
+      if (EncodeSnapshotBase64(aligned, b64, mime)) {
+        rec.snapshot_b64 = std::move(b64);
+        rec.snapshot_mime = std::move(mime);
+      }
+    }
+  }
   store_->Insert(rec);
 
   if (dir >= 0) {

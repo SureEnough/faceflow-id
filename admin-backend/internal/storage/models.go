@@ -105,7 +105,8 @@ type RecognitionLog struct {
 	CustomerID  *uint64   `gorm:"index" json:"customer_id,omitempty"` // 命中回填，匿名为 NULL
 	PersonType  int8      `gorm:"not null;default:0;index" json:"person_type"`
 	FaceFeature []byte    `gorm:"type:blob" json:"-"`
-	Snapshot    string    `gorm:"size:255" json:"snapshot,omitempty"`
+	Snapshot    string    `gorm:"type:text" json:"snapshot,omitempty"`       // base64 图片或对象存储 key
+	SnapshotMime string   `gorm:"size:32" json:"snapshot_mime,omitempty"`   // image/jpeg / image/bmp
 	Similarity  float32   `json:"similarity"`
 	Direction   int8      `gorm:"not null;default:0" json:"direction"`
 	CameraID    string    `gorm:"size:32" json:"camera_id"`
