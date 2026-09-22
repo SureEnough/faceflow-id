@@ -3,19 +3,15 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
+	"time"
 
 	"admin-backend/internal/auth"
 	"admin-backend/internal/storage"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
-)
-
-const (
-	// JWT 有效期（秒）
-	tokenTTLUser   = 12 * 3600
-	tokenTTLDevice = 24 * 3600
 )
 
 type loginReq struct {
@@ -44,17 +40,36 @@ func (s *Server) login(c *gin.Context) {
 		return
 	}
 
-	token, err := auth.Sign(s.secret(), int64(user.ID), roleName(user.Role), false, tokenTTLUser)
+	role := roleName(user.Role)
+	token, jti, err := auth.Sign(s.secret(), int64(user.ID), role, false, s.cfg.TokenTTLUserSec)
 	if err != nil {
 		Fail(c, http.StatusInternalServerError, CodeServer, err.Error())
 		return
 	}
+	s.recordToken(jti, "user", int64(user.ID), role, s.cfg.TokenTTLUserSec)
+	s.audit(c, "login", "user", int64(user.ID), "username="+user.Username)
 	OK(c, gin.H{
 		"token":      token,
 		"token_type": "Bearer",
-		"expires_in": tokenTTLUser,
+		"expires_in": s.cfg.TokenTTLUserSec,
 		"user":       gin.H{"id": user.ID, "username": user.Username, "role": roleName(user.Role)},
 	})
+}
+
+// recordToken 记录令牌到库（供吊销/管理；失败不阻塞发 token，仅记日志）
+func (s *Server) recordToken(jti, kind string, sub int64, role string, ttl int64) {
+	now := time.Now().Unix()
+	if err := s.db.Create(&storage.TokenRecord{
+		Jti: jti, SubjectKind: kind, SubjectID: sub, Role: role,
+		IssuedAt: now, ExpiresAt: now + ttl,
+	}).Error; err != nil {
+		s.logf("record token failed: %v", err)
+	}
+}
+
+// logf 简易日志（避免引入 logger 依赖）
+func (s *Server) logf(format string, args ...any) {
+	gin.DefaultWriter.Write([]byte("[api] " + fmt.Sprintf(format, args...) + "\n"))
 }
 
 func roleName(role int8) string {

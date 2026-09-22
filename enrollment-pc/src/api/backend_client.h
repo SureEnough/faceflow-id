@@ -21,8 +21,9 @@ class BackendClient : public QObject {
 
   // 设备注册（device_type=2 录入电脑端），成功后保存 device_id
   void RegisterDevice(const QString& name, quint64 storeId);
-  // 设备登录（POST /auth/device/login），成功后保存 token
-  void Login();
+  // 设备登录（POST /auth/device/login），成功后保存 token。
+  // onDone(true) 表示登录成功；失败时 onDone(false)（同时会 emit errorOccurred）。
+  void Login(std::function<void(bool)> onDone = nullptr);
   // 创建人员 + 特征（POST /customers；内部人员 person_type=1 需 staff_no）
   void CreateCustomer(quint64 customerIdHint, int personType, const QString& name,
                       const QString& idCardNo, const QString& staffNo,
@@ -44,8 +45,10 @@ class BackendClient : public QObject {
   void errorOccurred(const QString& message);
 
  private:
-  void request(const QString& method, const QString& path, const QJsonObject& payload,
-               std::function<void(const QJsonObject&)> onOk);
+  // 通用请求：401 且 allowRelogin 时自动重登并重放一次（attempt 计数防死循环）
+  void requestImpl(const QString& method, const QString& path, const QJsonObject& payload,
+                   std::function<void(const QJsonObject&)> onOk, int attempt, bool allowRelogin);
+  void loginWithCallback(std::function<void(bool)> onDone);
   void setAuth(QNetworkRequest& req) const;
   static QString base64Feature(const Feature& f);
 

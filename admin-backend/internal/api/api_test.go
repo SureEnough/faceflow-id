@@ -83,7 +83,9 @@ func login(t *testing.T, base, user, pass string) string {
 	if status != 200 || out.Code != 0 {
 		t.Fatalf("login failed: status=%d code=%d msg=%s", status, out.Code, out.Message)
 	}
-	var d struct{ Token string `json:"token"` }
+	var d struct {
+		Token string `json:"token"`
+	}
 	if err := json.Unmarshal(out.Data, &d); err != nil || d.Token == "" {
 		t.Fatalf("login token missing: %v", err)
 	}
@@ -102,7 +104,9 @@ func TestDeviceLoginToken(t *testing.T) {
 	if status != 200 || out.Code != 0 {
 		t.Fatalf("register: %d %s", out.Code, out.Message)
 	}
-	var edge struct{ DeviceID uint64 `json:"device_id"` }
+	var edge struct {
+		DeviceID uint64 `json:"device_id"`
+	}
 	_ = json.Unmarshal(out.Data, &edge)
 
 	// 错误 psk → 401
@@ -245,7 +249,9 @@ func TestFullFlowLoginDeviceCustomerHistory(t *testing.T) {
 	if status != 200 || out.Code != 0 {
 		t.Fatalf("register edge: %d %s", out.Code, out.Message)
 	}
-	var edge struct{ DeviceID uint64 `json:"device_id"` }
+	var edge struct {
+		DeviceID uint64 `json:"device_id"`
+	}
 	_ = json.Unmarshal(out.Data, &edge)
 
 	// 3. 非法父设备（读卡器挂到边缘盒下 → 类型不匹配应拒绝）
@@ -329,5 +335,84 @@ func TestRBACForbiddenForViewer(t *testing.T) {
 	_, status = doJSON(t, http.MethodGet, base+"/users", nil, viewerToken)
 	if status != http.StatusForbidden {
 		t.Fatalf("viewer users should be 403, got %d", status)
+	}
+}
+
+func TestTokenManagement(t *testing.T) {
+	base, cleanup := newTestServer(t)
+	defer cleanup()
+	url := base.URL + "/api/v1"
+
+	adminToken := login(t, url, "admin", "admin123")
+
+	// 准备 operator 用户（RBAC 用）
+	if _, status := doJSON(t, http.MethodPost, url+"/users", map[string]any{
+		"username": "op1", "password": "op123456", "role": 1, "status": 1,
+	}, adminToken); status != 200 {
+		t.Fatalf("create operator: %d", status)
+	}
+	opToken := login(t, url, "op1", "op123456")
+
+	// 1. 签发已落库：GET /tokens 能看到 admin 的 user token
+	var list struct {
+		Tokens []struct {
+			Jti         string `json:"jti"`
+			SubjectKind string `json:"subject_kind"`
+			SubjectID   int64  `json:"subject_id"`
+		} `json:"tokens"`
+	}
+	out, status := doJSON(t, http.MethodGet, url+"/tokens?status=active", nil, adminToken)
+	if status != 200 {
+		t.Fatalf("GET /tokens: %d", status)
+	}
+	if err := json.Unmarshal(out.Data, &list); err != nil {
+		t.Fatalf("unmarshal tokens: %v", err)
+	}
+	if len(list.Tokens) < 2 {
+		t.Fatalf("expected >=2 active tokens (admin+operator), got %d", len(list.Tokens))
+	}
+	victimJti := ""
+	for _, tk := range list.Tokens {
+		if tk.SubjectKind == "user" && tk.SubjectID == 1 {
+			victimJti = tk.Jti
+		}
+	}
+	if victimJti == "" {
+		t.Fatal("admin user token not found in token list")
+	}
+
+	// 2. operator 可读、不可吊销（403）
+	if _, status := doJSON(t, http.MethodGet, url+"/tokens?status=active", nil, opToken); status != 200 {
+		t.Fatalf("operator GET /tokens should 200, got %d", status)
+	}
+	if _, status := doJSON(t, http.MethodPost, url+"/tokens/"+victimJti+"/revoke", nil, opToken); status != 403 {
+		t.Fatalf("operator revoke should 403, got %d", status)
+	}
+
+	// 3. admin 吊销 admin 的旧 token → 旧 token 立即 401
+	out, status = doJSON(t, http.MethodPost, url+"/tokens/"+victimJti+"/revoke", nil, adminToken)
+	if status != 200 {
+		t.Fatalf("admin revoke: %d", status)
+	}
+	var rv struct {
+		Revoked bool `json:"revoked"`
+	}
+	if err := json.Unmarshal(out.Data, &rv); err != nil || !rv.Revoked {
+		t.Fatalf("revoke response: %+v err=%v", rv, err)
+	}
+	if _, status := doJSON(t, http.MethodGet, url+"/devices", nil, adminToken); status != 401 {
+		t.Fatalf("revoked token should 401, got %d", status)
+	}
+
+	// 4. viewer 无权限读列表（adminToken 已吊销，用新登录的 admin 建 viewer）
+	freshAdmin := login(t, url, "admin", "admin123")
+	if _, status := doJSON(t, http.MethodPost, url+"/users", map[string]any{
+		"username": "v2", "password": "viewer123", "role": 2, "status": 1,
+	}, freshAdmin); status != 200 {
+		t.Fatalf("create viewer: %d", status)
+	}
+	viewerToken := login(t, url, "v2", "viewer123")
+	if _, status := doJSON(t, http.MethodGet, url+"/tokens", nil, viewerToken); status != 403 {
+		t.Fatalf("viewer GET /tokens should 403, got %d", status)
 	}
 }

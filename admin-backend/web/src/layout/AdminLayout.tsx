@@ -7,7 +7,7 @@ import {
   BarChartOutlined,
   SearchOutlined,
 } from '@ant-design/icons'
-import { LogoutOutlined, FileSearchOutlined } from '@ant-design/icons'
+import { LogoutOutlined, FileSearchOutlined, SafetyOutlined } from '@ant-design/icons'
 import { clearToken } from '../api/client'
 
 const { Sider, Header, Content } = Layout
@@ -19,12 +19,13 @@ const MENU = [
   { key: '/stats', icon: <BarChartOutlined />, label: '客流统计' },
   { key: '/staff', icon: <TeamOutlined />, label: '员工通行' },
   { key: '/history', icon: <SearchOutlined />, label: '历史来访回查' },
-  { key: '/users', icon: <TeamOutlined />, label: '用户管理', admin: true },
-  { key: '/audit-logs', icon: <FileSearchOutlined />, label: '审计日志', admin: true },
+  { key: '/tokens', icon: <SafetyOutlined />, label: '令牌管理', roles: ['admin', 'operator'] },
+  { key: '/users', icon: <TeamOutlined />, label: '用户管理', roles: ['admin'] },
+  { key: '/audit-logs', icon: <FileSearchOutlined />, label: '审计日志', roles: ['admin'] },
 ]
 
-// 非管理员不显示用户管理
-const visibleMenu = MENU.filter((m) => !m.admin || localStorage.getItem('role') === 'admin')
+// 按角色过滤菜单（未标 roles 视为所有人可见）
+const visibleMenu = MENU.filter((m) => !m.roles || (m.roles as string[]).includes(localStorage.getItem('role') ?? ''))
 
 export default function AdminLayout() {
   const nav = useNavigate()

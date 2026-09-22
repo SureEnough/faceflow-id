@@ -49,24 +49,24 @@ func (s *Server) deviceLogin(c *gin.Context) {
 		Fail(c, http.StatusInternalServerError, CodeServer, err.Error())
 		return
 	}
-	token, err := auth.Sign(s.secret(), int64(dev.ID), "device", true, tokenTTLDevice)
+	token, jti, err := auth.Sign(s.secret(), int64(dev.ID), "device", true, s.cfg.TokenTTLDeviceSec)
 	if err != nil {
 		Fail(c, http.StatusInternalServerError, CodeServer, err.Error())
 		return
 	}
-	OK(c, gin.H{"token": token, "token_type": "Bearer", "expires_in": tokenTTLDevice, "device_id": dev.ID})
+	s.recordToken(jti, "device", int64(dev.ID), "device", s.cfg.TokenTTLDeviceSec)
+	OK(c, gin.H{"token": token, "token_type": "Bearer", "expires_in": s.cfg.TokenTTLDeviceSec, "device_id": dev.ID})
 }
-
 
 // --- 注册 ---
 
 type registerReq struct {
-	DeviceType int8   `json:"device_type" binding:"required,oneof=1 2 3 4 5"`
+	DeviceType int8    `json:"device_type" binding:"required,oneof=1 2 3 4 5"`
 	ParentID   *uint64 `json:"parent_id"`
-	DeviceKey  string `json:"device_key"`
-	Name       string `json:"name" binding:"required"`
-	StoreID    uint64 `json:"store_id" binding:"required"`
-	PSK        string `json:"psk" binding:"required"`
+	DeviceKey  string  `json:"device_key"`
+	Name       string  `json:"name" binding:"required"`
+	StoreID    uint64  `json:"store_id" binding:"required"`
+	PSK        string  `json:"psk" binding:"required"`
 }
 
 // POST /devices/register 设备注册（子设备由父设备代为注册）
@@ -118,15 +118,16 @@ func (s *Server) registerDevice(c *gin.Context) {
 	}
 
 	// 设备 token：JWT（dev=true claim）
-	token, err := auth.Sign(s.secret(), int64(dev.ID), "device", true, tokenTTLDevice)
+	token, jti, err := auth.Sign(s.secret(), int64(dev.ID), "device", true, s.cfg.TokenTTLDeviceSec)
 	if err != nil {
 		Fail(c, http.StatusInternalServerError, CodeServer, err.Error())
 		return
 	}
+	s.recordToken(jti, "device", int64(dev.ID), "device", s.cfg.TokenTTLDeviceSec)
 	OK(c, gin.H{
 		"device_id":  dev.ID,
 		"token":      token,
-		"expires_at": time.Now().Add(24 * time.Hour).UTC().Format(time.RFC3339),
+		"expires_at": time.Now().Add(time.Duration(s.cfg.TokenTTLDeviceSec) * time.Second).UTC().Format(time.RFC3339),
 	})
 }
 
@@ -150,12 +151,12 @@ type subDeviceState struct {
 }
 
 type heartbeatReq struct {
-	Status      int8             `json:"status"`
-	CPU         float64          `json:"cpu"`
-	Mem         float64          `json:"mem"`
-	Disk        float64          `json:"disk"`
-	FPS         float64          `json:"fps"`
-	SubDevices  []subDeviceState `json:"sub_devices"`
+	Status     int8             `json:"status"`
+	CPU        float64          `json:"cpu"`
+	Mem        float64          `json:"mem"`
+	Disk       float64          `json:"disk"`
+	FPS        float64          `json:"fps"`
+	SubDevices []subDeviceState `json:"sub_devices"`
 }
 
 // POST /devices/:id/heartbeat 主设备心跳；子设备在线状态由父设备托管

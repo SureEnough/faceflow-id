@@ -51,6 +51,8 @@ DB_DSN="sqlite:./data/admin.db" DEVICE_PSK="dev-psk-change-me" ./bin/server
 | DEVICE_PSK | dev-psk-change-me | 设备注册预共享密钥 |
 | HISTORY_TOP_K | 50 | 历史回查聚合上限 |
 | HISTORY_THRESHOLD | 0.40 | 历史回查相似度阈值（ArcFace 余弦） |
+| TOKEN_TTL_USER_SECONDS | 43200 | 用户令牌有效期（秒，默认 12h） |
+| TOKEN_TTL_DEVICE_SECONDS | 86400 | 设备令牌有效期（秒，默认 24h） |
 | RETENTION_DAYS | 365 | 识别记录留存天数（后续定时清理任务使用） |
 
 ## 已实现接口（/api/v1）
@@ -67,6 +69,8 @@ DB_DSN="sqlite:./data/admin.db" DEVICE_PSK="dev-psk-change-me" ./bin/server
 | PUT/DELETE | /customers/:id | 更新 / 软删 |
 | POST | /customers/:id/features | 追加特征 |
 | GET | /customers/features/sync | 边缘盒增量特征拉取（内部人员仅下发工号哈希） |
+| GET | /tokens | 令牌列表（kind=user/device&status=active/revoked/all；admin/operator） |
+| POST | /tokens/:jti/revoke | 吊销令牌（admin；吊销后立即失效） |
 | POST | /records/recognition/batch | 识别记录批量上报（幂等） |
 | POST | /records/verify | 核验记录上报 |
 | POST | /history/search | 历史来访回查（1:N → 聚合次数/天数/首次/最近） |

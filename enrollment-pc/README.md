@@ -44,3 +44,15 @@ cmake --build build -j4
 - ✅ 特征提取层（src/feature/）：ONNXRuntime 真实现（SCRFD 检测 + 5 点对齐 + ArcFace 512 维，与 edge-box 同一向量空间），无 ORT 时 Mock 回退，纯 C++ 单测通过
 - ✅ 活体检测接入（src/feature/：RGB 活体模型得分 0~1，无模型视为不检测）
 - ⏳ 华视 CVR-100U / 精伦 IDR210 厂商 SDK 适配
+## 令牌与设备凭证
+
+- 设备登录采用 `POST /auth/device/login`（device_id + PSK 换取 Bearer token），后续请求自动携带；
+  令牌有效期由后台 `TOKEN_TTL_DEVICE_SECONDS`（默认 24h）控制，过期/吊销后客户端**自动重登**并重放原请求。
+- 后台地址与 PSK 通过环境变量配置（不硬编码）：
+
+```bash
+export ENROLL_API_URL="http://<后台IP>:8080/api/v1"
+export ENROLL_PSK="<与后台 DEVICE_PSK 一致>"
+```
+
+未设置时回退开发默认值（仅本地演示用）。

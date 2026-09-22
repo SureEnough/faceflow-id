@@ -172,10 +172,27 @@ type AuditLog struct {
 	CreatedAt  int64  `json:"created_at"` // Unix 秒
 }
 
+// TokenRecord 令牌记录（签发落库，用于吊销与管理；JWT 本身无状态）
+type TokenRecord struct {
+	Jti         string `gorm:"primaryKey;size:64" json:"jti"`
+	SubjectKind string `gorm:"size:16;index;not null" json:"subject_kind"` // user / device
+	SubjectID   int64  `gorm:"index;not null" json:"subject_id"`
+	Role        string `gorm:"size:16;not null" json:"role"` // admin / operator / viewer / device
+	IssuedAt    int64  `gorm:"not null" json:"issued_at"`    // Unix 秒
+	ExpiresAt   int64  `gorm:"index;not null" json:"expires_at"` // Unix 秒
+	RevokedAt   *int64 `json:"revoked_at"`                        // nil = 有效
+	RevokedBy   int64  `gorm:"not null;default:0" json:"revoked_by"` // 操作者 user id；0 = 系统/未知
+	LastUsedAt  int64  `gorm:"not null;default:0" json:"last_used_at"` // Unix 秒
+}
+
+// TableName 指定表名（避免与系统表冲突）
+func (TokenRecord) TableName() string { return "tokens" }
+
 // 自动迁移（开发期使用；生产建议用 migrations/schema.sql）
 func AutoMigrate(db *gorm.DB) error {
 	return db.AutoMigrate(
 		&Store{}, &Device{}, &Customer{}, &CustomerFeature{},
 		&RecognitionLog{}, &VerifyRecord{}, &Visits{}, &User{}, &AuditLog{},
+		&TokenRecord{},
 	)
 }

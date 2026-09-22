@@ -8,9 +8,12 @@ import (
 
 func TestSignVerify(t *testing.T) {
 	secret := []byte("test-secret")
-	token, err := Sign(secret, 1, "admin", false, 3600)
+	token, jti, err := Sign(secret, 1, "admin", false, 3600)
 	if err != nil {
 		t.Fatalf("Sign: %v", err)
+	}
+	if jti == "" {
+		t.Fatal("jti should not be empty")
 	}
 	if strings.Count(token, ".") != 2 {
 		t.Fatalf("invalid token format: %s", token)
@@ -28,14 +31,14 @@ func TestSignVerify(t *testing.T) {
 }
 
 func TestVerifyWrongSecret(t *testing.T) {
-	token, _ := Sign([]byte("secret-a"), 2, "viewer", false, 3600)
+	token, _, _ := Sign([]byte("secret-a"), 2, "viewer", false, 3600)
 	if _, err := Verify([]byte("secret-b"), token); err == nil {
 		t.Fatal("expected error with wrong secret")
 	}
 }
 
 func TestVerifyTamperedToken(t *testing.T) {
-	token, _ := Sign([]byte("secret"), 3, "admin", false, 3600)
+	token, _, _ := Sign([]byte("secret"), 3, "admin", false, 3600)
 	parts := strings.Split(token, ".")
 	// 篡改 payload 中的 sub
 	parts[1] = "eyJzdWIiOjk5OTksInJvbGUiOiJhZG1pbiJ9"
@@ -47,7 +50,7 @@ func TestVerifyTamperedToken(t *testing.T) {
 
 func TestVerifyExpired(t *testing.T) {
 	secret := []byte("secret")
-	token, err := Sign(secret, 1, "admin", false, -10) // 已过期
+	token, _, err := Sign(secret, 1, "admin", false, -10) // 已过期
 	if err != nil {
 		t.Fatalf("Sign: %v", err)
 	}
@@ -57,7 +60,7 @@ func TestVerifyExpired(t *testing.T) {
 }
 
 func TestDeviceTokenClaim(t *testing.T) {
-	token, _ := Sign([]byte("secret"), 7, "device", true, 3600)
+	token, _, _ := Sign([]byte("secret"), 7, "device", true, 3600)
 	claims, err := Verify([]byte("secret"), token)
 	if err != nil {
 		t.Fatalf("Verify: %v", err)

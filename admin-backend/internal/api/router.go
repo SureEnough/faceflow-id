@@ -43,7 +43,7 @@ func (s *Server) Router() *gin.Engine {
 		api.POST("/devices/register", s.registerDevice)
 		api.POST("/devices/:id/heartbeat", s.deviceHeartbeat)
 
-		authed := api.Group("", authMiddlewareWithSecret(s.secret()), s.auditMiddleware())
+		authed := api.Group("", s.authMiddleware(), s.auditMiddleware())
 		{
 			// 设备/记录/统计/查询：任意已登录 token（含设备 token）
 			authed.GET("/devices", s.deviceTree)
@@ -65,6 +65,10 @@ func (s *Server) Router() *gin.Engine {
 			// 人员档案修改/删除：admin
 			authed.PUT("/customers/:id", requireRole("admin"), s.updateCustomer)
 			authed.DELETE("/customers/:id", requireRole("admin"), s.deleteCustomer)
+
+			// 令牌管理：查看（admin/operator）、吊销（admin）
+			authed.GET("/tokens", requireRole("admin", "operator"), s.listTokens)
+			authed.POST("/tokens/:jti/revoke", requireRole("admin"), s.revokeToken)
 
 			// 用户管理：admin
 			admin := authed.Group("", requireRole("admin"))

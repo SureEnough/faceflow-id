@@ -12,6 +12,7 @@ import Stats from './pages/Stats'
 import Staff from './pages/Staff'
 import HistorySearch from './pages/HistorySearch'
 import Users from './pages/Users'
+import Tokens from './pages/Tokens'
 import AuditLogs from './pages/AuditLogs'
 import { getToken } from './api/client'
 import 'antd/dist/reset.css'
@@ -35,6 +36,7 @@ createRoot(document.getElementById('root')!).render(
             <Route path="/staff" element={<Staff />} />
             <Route path="/history" element={<HistorySearch />} />
             <Route path="/users" element={<Users />} />
+            <Route path="/tokens" element={<Tokens />} />
             <Route path="/audit-logs" element={<AuditLogs />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

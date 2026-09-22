@@ -13,6 +13,8 @@ type Config struct {
 	RetentionDay int    // 识别记录留存天数（默认 365）
 
 	JWTSecret    string // JWT 签名密钥
+	TokenTTLUserSec   int64 // 用户令牌有效期（秒，默认 12h）
+	TokenTTLDeviceSec int64 // 设备令牌有效期（秒，默认 24h）
 	AdminUser    string // 初始管理员账号
 	AdminPassword string // 初始管理员密码
 
@@ -31,6 +33,8 @@ func Load() Config {
 		RetentionDay: atoi(getenv("RETENTION_DAYS", "365")),
 
 		JWTSecret:     getenv("JWT_SECRET", "dev-jwt-secret-change-me"),
+		TokenTTLUserSec:   int64(atoi(getenv("TOKEN_TTL_USER_SECONDS", "43200"))),
+		TokenTTLDeviceSec: int64(atoi(getenv("TOKEN_TTL_DEVICE_SECONDS", "86400"))),
 		AdminUser:     getenv("ADMIN_USER", "admin"),
 		AdminPassword: getenv("ADMIN_PASSWORD", "admin123"),
 

@@ -27,8 +27,8 @@ QString BackendClient::base64Feature(const Feature& f) {
   return QString::fromLatin1(raw.toBase64());
 }
 
-void BackendClient::request(const QString& method, const QString& path, const QJsonObject& payload,
-                            std::function<void(const QJsonObject&)> onOk) {
+void BackendClient::requestImpl(const QString& method, const QString& path, const QJsonObject& payload,
+                             std::function<void(const QJsonObject&)> onOk, int attempt, bool allowRelogin) {
   QNetworkRequest req{QUrl(base_url_ + path)};
   setAuth(req);
   QNetworkReply* reply = nullptr;
@@ -38,9 +38,24 @@ void BackendClient::request(const QString& method, const QString& path, const QJ
   } else {
     reply = net_.get(req);
   }
-  connect(reply, &QNetworkReply::finished, this, [this, reply, onOk]() {
+  connect(reply, &QNetworkReply::finished, this,
+          [this, reply, method, path, payload, onOk, attempt, allowRelogin]() {
     reply->deleteLater();
+    const int httpStatus =
+        reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     const QByteArray raw = reply->readAll();
+
+    // token 失效（401）：自动重登一次并重放原请求（非登录请求才允许）
+    if (httpStatus == 401 && allowRelogin && attempt < 1) {
+      loginWithCallback([this, method, path, payload, onOk](bool ok) {
+        if (!ok) {
+          emit errorOccurred(QStringLiteral("令牌失效且重新登录失败，请检查设备 PSK"));
+          return;
+        }
+        requestImpl(method, path, payload, onOk, /*attempt=*/1, /*allowRelogin=*/true);
+      });
+      return;
+    }
     if (reply->error() != QNetworkReply::NoError) {
       emit errorOccurred(reply->errorString());
       return;
@@ -61,18 +76,26 @@ void BackendClient::RegisterDevice(const QString& name, quint64 storeId) {
       {"store_id", static_cast<double>(storeId)},
       {"psk", psk_},
   };
-  request("POST", "/devices/register", payload, [this](const QJsonObject& data) {
+  requestImpl("POST", "/devices/register", payload, [this](const QJsonObject& data) {
     device_id_ = static_cast<quint64>(data.value("device_id").toDouble());
     emit deviceRegistered(device_id_);
   });
 }
 
-void BackendClient::Login() {
+void BackendClient::Login(std::function<void(bool)> onDone) {
+  loginWithCallback(std::move(onDone));
+}
+
+void BackendClient::loginWithCallback(std::function<void(bool)> onDone) {
   QJsonObject payload{{"device_id", static_cast<double>(device_id_)}, {"psk", psk_}};
-  request("POST", "/auth/device/login", payload, [this](const QJsonObject& data) {
-    token_ = data.value("token").toString();
-    emit loggedIn();
-  });
+  // 登录请求本身 401 不触发重登，避免死循环（psk 错误直接失败）
+  requestImpl("POST", "/auth/device/login", payload,
+              [this, onDone](const QJsonObject& data) {
+                token_ = data.value("token").toString();
+                emit loggedIn();
+                if (onDone) onDone(true);
+              },
+              /*attempt=*/0, /*allowRelogin=*/false);
 }
 
 void BackendClient::CreateCustomer(quint64 /*customerIdHint*/, int personType,
@@ -91,7 +114,7 @@ void BackendClient::CreateCustomer(quint64 /*customerIdHint*/, int personType,
       {"live_photo", ""},
       {"face_feature", base64Feature(feature)},
   };
-  request("POST", "/customers", payload, [this](const QJsonObject& data) {
+  requestImpl("POST", "/customers", payload, [this](const QJsonObject& data) {
     emit customerCreated(data);
   });
 }
@@ -105,12 +128,12 @@ void BackendClient::PostVerify(quint64 customerId, float similarity, bool passed
       {"camera_id", cameraId},
       {"verify_type", "idcard"},
   };
-  request("POST", "/records/verify", payload, [this](const QJsonObject&) { emit verifyPosted(); });
+  requestImpl("POST", "/records/verify", payload, [this](const QJsonObject&) { emit verifyPosted(); });
 }
 
 void BackendClient::SearchHistory(const Feature& feature) {
   QJsonObject payload{{"feature", base64Feature(feature)}};
-  request("POST", "/history/search", payload, [this](const QJsonObject& data) {
+  requestImpl("POST", "/history/search", payload, [this](const QJsonObject& data) {
     emit historyResult(data);
   });
 }

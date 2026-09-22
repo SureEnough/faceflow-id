@@ -14,8 +14,10 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
   setWindowTitle(QStringLiteral("FaceFlow 顾客录入端"));
   resize(960, 600);
 
-  api_ = new BackendClient(QStringLiteral("http://127.0.0.1:8080/api/v1"),
-                           QStringLiteral("dev-psk-change-me"), this);
+  // 后台地址与设备 PSK 从环境变量读取（生产禁止硬编码；未设置时回退开发默认值）
+  const QString apiUrl = qEnvironmentVariable("ENROLL_API_URL", "http://127.0.0.1:8080/api/v1");
+  const QString devicePsk = qEnvironmentVariable("ENROLL_PSK", "dev-psk-change-me");
+  api_ = new BackendClient(apiUrl, devicePsk, this);
   reader_ = CreateIdCardReader("simulator");  // 生产替换为 huawei/jinglun
   camera_ = new CameraView(this);
 

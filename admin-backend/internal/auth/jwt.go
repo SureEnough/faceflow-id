@@ -5,8 +5,10 @@ package auth
 
 import (
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,6 +18,7 @@ import (
 
 // Claims JWT 载荷
 type Claims struct {
+	Jti  string `json:"jti"`  // token id（用于吊销/管理）
 	Sub  int64  `json:"sub"`  // user_id 或 device_id
 	Role string `json:"role"` // admin / operator / viewer / device
 	Dev  bool   `json:"dev"`  // true = 设备 token
@@ -26,13 +29,24 @@ type Claims struct {
 func b64e(b []byte) string { return base64.RawURLEncoding.EncodeToString(b) }
 func b64d(s string) ([]byte, error) { return base64.RawURLEncoding.DecodeString(s) }
 
-// Sign 签发 HS256 JWT（ttl 秒）
-func Sign(secret []byte, sub int64, role string, dev bool, ttlSec int64) (string, error) {
+// RandomJti 生成 16 字节加密随机 token id（hex）
+func RandomJti() string {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		// 加密随机失败属于致命的工程错误；回退时间戳+计数器仍保证唯一
+		return fmt.Sprintf("jti-%d", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(b)
+}
+
+// Sign 签发 HS256 JWT（ttl 秒），返回 token 与 jti（jti 供落库吊销）
+func Sign(secret []byte, sub int64, role string, dev bool, ttlSec int64) (token string, jti string, err error) {
 	now := time.Now().Unix()
-	claims := Claims{Sub: sub, Role: role, Dev: dev, Iat: now, Exp: now + ttlSec}
+	jti = RandomJti()
+	claims := Claims{Jti: jti, Sub: sub, Role: role, Dev: dev, Iat: now, Exp: now + ttlSec}
 	payload, err := json.Marshal(claims)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	header := []byte(`{"alg":"HS256","typ":"JWT"}`)
 	unsigned := b64e(header) + "." + b64e(payload)
@@ -40,7 +54,7 @@ func Sign(secret []byte, sub int64, role string, dev bool, ttlSec int64) (string
 	mac := hmac.New(sha256.New, secret)
 	mac.Write([]byte(unsigned))
 	sig := b64e(mac.Sum(nil))
-	return unsigned + "." + sig, nil
+	return unsigned + "." + sig, jti, nil
 }
 
 // Verify 验证 JWT 签名与有效期，返回载荷
