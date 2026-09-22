@@ -1,5 +1,6 @@
 #include "recognizer/recognizer.h"
 
+#include <algorithm>
 #include <cmath>
 #include <map>
 
@@ -15,6 +16,13 @@ float Dot(const Feature& a, const Feature& b) {
 
 void Recognizer::LoadLibrary(const std::vector<Identity>& identities) {
   identities_ = identities;
+}
+
+void Recognizer::Remove(int64_t customer_id) {
+  identities_.erase(
+      std::remove_if(identities_.begin(), identities_.end(),
+                     [customer_id](const Identity& it) { return it.customer_id == customer_id; }),
+      identities_.end());
 }
 
 void Recognizer::Upsert(const Identity& identity) {

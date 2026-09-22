@@ -3,6 +3,10 @@
   "device_psk": "dev-psk-change-me",
   "report_endpoint": "http://127.0.0.1:8080/api/v1",
   "report_interval_s": 60,
+  "heartbeat_interval_s": 30,
+  "config_poll_s": 300,
+  "store_id": 1,
+  "device_name": "edge-box",
   "det_thresh": 0.5,
   "recog_thresh": 0.40,
   "verify_thresh": 0.50,
@@ -10,6 +14,13 @@
   "staff_enabled": true,
   "retention_days": 365,
   "max_frames": 0,
+
+  "web_enabled": true,
+  "web_port": 8180,
+  "web_username": "admin",
+  "web_password": "change-me",
+  "web_static_dir": "web/dist",
+
   "cameras": [
     {
       "camera_id": "cam-01",

@@ -58,6 +58,8 @@ struct Recognition {
   int direction = -1;              // 0 进 / 1 出；-1 未判定
   std::string camera_id;
   int64_t created_at = 0;          // Unix 秒
+  std::string snapshot_b64;        // 抓拍图（base64）
+  std::string snapshot_mime;       // image/jpeg / image/bmp
 };
 
 }  // namespace eb

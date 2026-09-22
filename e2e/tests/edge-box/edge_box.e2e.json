@@ -1,0 +1,27 @@
+{
+  "device_id": 0,
+  "device_psk": "e2e-psk",
+  "store_id": 0,
+  "report_endpoint": "",
+  "report_interval_s": 300,
+  "heartbeat_interval_s": 5,
+  "config_poll_s": 10,
+  "web_enabled": true,
+  "web_port": 18191,
+  "web_username": "admin",
+  "web_password": "e2e-pass",
+  "web_static_dir": "../../../edge-box/web/dist",
+  "det_thresh": 0.5,
+  "recog_thresh": 0.4,
+  "max_frames": 0,
+  "cameras": [
+    {
+      "camera_id": "cam-ui",
+      "url": "-",
+      "role": "entrance",
+      "count_flow": true,
+      "direction": "both",
+      "virtual_line": { "x1": 0, "y1": 120, "x2": 320, "y2": 120 }
+    }
+  ]
+}

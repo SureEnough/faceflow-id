@@ -15,6 +15,9 @@ type Config struct {
 	JWTSecret    string // JWT 签名密钥
 	AdminUser    string // 初始管理员账号
 	AdminPassword string // 初始管理员密码
+
+	ObjectRoot      string // 对象存储本地根目录（生产可接 MinIO/S3，见 docs/deployment.md）
+	ObjectPublicURL string // 对象公网访问前缀（static.example.com）
 }
 
 func Load() Config {
@@ -30,6 +33,9 @@ func Load() Config {
 		JWTSecret:     getenv("JWT_SECRET", "dev-jwt-secret-change-me"),
 		AdminUser:     getenv("ADMIN_USER", "admin"),
 		AdminPassword: getenv("ADMIN_PASSWORD", "admin123"),
+
+		ObjectRoot:      os.Getenv("OBJECT_ROOT"),
+		ObjectPublicURL: os.Getenv("OBJECT_PUBLIC_URL"),
 	}
 	return cfg
 }

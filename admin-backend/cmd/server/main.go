@@ -5,6 +5,7 @@ import (
 
 	"admin-backend/internal/api"
 	"admin-backend/internal/config"
+	"admin-backend/internal/object"
 	"admin-backend/internal/security"
 	"admin-backend/internal/storage"
 )
@@ -25,7 +26,12 @@ func main() {
 		log.Fatalf("migrate failed: %v", err)
 	}
 
-	srv := api.NewServer(cfg, db, cip)
+	var obj object.Storage
+	if cfg.ObjectRoot != "" {
+		obj = object.NewLocal(cfg.ObjectRoot, cfg.ObjectPublicURL)
+		log.Printf("object storage: local root=%s public=%q", cfg.ObjectRoot, cfg.ObjectPublicURL)
+	}
+	srv := api.NewServer(cfg, db, cip, obj)
 	if err := srv.EnsureAdmin(); err != nil {
 		log.Fatalf("ensure admin failed: %v", err)
 	}

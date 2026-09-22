@@ -1,4 +1,4 @@
-import { get, post } from './client'
+import { get, post, put } from './client'
 import type {
   Customer,
   Device,
@@ -10,7 +10,15 @@ import type {
 } from './types'
 
 // ---- 设备 ----
-export const fetchDeviceTree = () => get<Device[]>('/devices')
+// 后端返回 {items:[...]}，此处解包为数组（Dashboard/Devices 均按数组使用）
+export const fetchDeviceTree = async () => {
+  const data = await get<{ items: Device[] }>('/devices')
+  return data.items
+}
+export const fetchDeviceConfig = (id: number) =>
+  get<{ device_id: number; config: Record<string, unknown> | null }>(`/devices/${id}/config`)
+export const pushDeviceConfig = (id: number, config: Record<string, unknown>) =>
+  put<{ device_id: number }>(`/devices/${id}/config`, { config })
 
 // ---- 人员库 ----
 export const fetchCustomers = (params: {

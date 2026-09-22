@@ -2,11 +2,11 @@ package storage
 
 import (
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 
 	"github.com/glebarez/sqlite"
+	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -35,10 +35,11 @@ func Open(dsn string) (*gorm.DB, error) {
 			Logger: logger.Default.LogMode(logger.Warn),
 		})
 	case len(dsn) >= 6 && dsn[:6] == "mysql:":
-		// mysql DSN 不含前缀协议，此处要求调用方传入纯 DSN：
-		// Open("user:pass@tcp(host:port)/db?charset=utf8mb4&parseTime=True&loc=Local")
-		// 如需 MySQL 请引入 gorm.io/driver/mysql 后在此分支打开。
-		return nil, fmt.Errorf("mysql driver not linked in this build: %s", dsn)
+		// MySQL（生产）：DSN 前缀 mysql: 后接标准 MySQL DSN
+		// mysql:user:pass@tcp(host:port)/admin?charset=utf8mb4&parseTime=True&loc=Local
+		db, err = gorm.Open(mysql.Open(dsn[len("mysql:"):]), &gorm.Config{
+			Logger: logger.Default.LogMode(logger.Warn),
+		})
 	default:
 		db, err = gorm.Open(sqlite.Open(dsn), &gorm.Config{
 			Logger: logger.Default.LogMode(logger.Warn),

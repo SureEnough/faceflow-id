@@ -11,12 +11,17 @@ namespace {
 Feature FeatureFromBytes(const ImageFrame& f) {
   Feature feat{};
   if (f.data.empty()) return feat;
-  const size_t step = f.data.size() / (kFeatureDim * 2) + 1;
+  // 全覆盖分段哈希：每维聚合一段字节，位置/内容差异会投影到多个维度（更接近真实 Embedding）
+  const size_t total = f.data.size();
+  const size_t base = total / kFeatureDim;
+  const size_t rem = total % kFeatureDim;
+  size_t idx = 0;
   for (int i = 0; i < kFeatureDim; ++i) {
-    uint32_t acc = 0;
-    size_t idx = static_cast<size_t>(i) * step;
-    for (int j = 0; j < 8 && idx < f.data.size(); ++j, ++idx) {
-      acc = acc * 31 + f.data[idx];
+    size_t len = base + (static_cast<size_t>(i) < rem ? 1 : 0);
+    uint32_t acc = 2166136261u;  // FNV 初值
+    size_t end = std::min(idx + len, total);
+    for (; idx < end; ++idx) {
+      acc = (acc ^ f.data[idx]) * 16777619u;
     }
     feat[i] = (acc % 1000) / 1000.0f - 0.5f;  // [-0.5, 0.5)
   }

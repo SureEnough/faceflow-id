@@ -31,4 +31,9 @@ class RecognitionStore {
   virtual int64_t Cleanup(int64_t now_unix, int retention_days) = 0;
 };
 
+// 创建本地存储：有 SQLite 时用 SQLiteStore（edge_box.db），否则内存实现（自测/CI）
+RecognitionStore* CreateRecognitionStore();
+// 强制创建内存实现（测试用）
+RecognitionStore* CreateMemStore();
+
 }  // namespace eb

@@ -2,6 +2,10 @@
 // ONNXRuntime 后端（HAVE_ONNXRUNTIME 条件编译）：SCRFD 检测 + ArcFace 特征 + RGB 活体
 // 需要：onnxruntime_cxx_api.h / onnxruntime(.so|.dll)
 // 说明：模型输入输出名通过 Session 动态读取，兼容多数导出版本；
+//       SCRFD 输出按 insightface scrfd.py 原版 anchor 解码（文档 15.1）：
+//       - 布局 A：每个 stride 一个输出（score_1/bbox_1/kps_1 等，标准导出）
+//       - 布局 B：拼接单输出（锚点按 stride 8→16→32 顺序，anchor-first 排布）
+//       - 回退：无法识别时按绝对坐标框解码（旧布局 / yolo 类导出）
 //       模型训练/导出约定见 README（Detect 输入 640x640，Extract 输入 112x112）。
 #include "backend/inference_backend.h"
 
@@ -15,6 +19,8 @@
 #include <numeric>
 #include <string>
 #include <vector>
+
+#include "backend/scrfd_decode.h"
 
 namespace eb {
 
@@ -52,31 +58,6 @@ void BgrToPlanar(const ImageFrame& frame, int dstW, int dstH, bool swapRgb, bool
   }
 }
 
-// ---------- NMS ----------
-std::vector<int> Nms(const std::vector<FaceBox>& boxes, float iou_thresh) {
-  std::vector<int> order(boxes.size());
-  std::iota(order.begin(), order.end(), 0);
-  std::sort(order.begin(), order.end(), [&](int a, int b) { return boxes[a].score > boxes[b].score; });
-
-  std::vector<int> keep;
-  std::vector<char> removed(boxes.size(), 0);
-  for (int idx : order) {
-    if (removed[idx]) continue;
-    keep.push_back(idx);
-    const FaceBox& a = boxes[idx];
-    for (int j : order) {
-      if (removed[j]) continue;
-      const FaceBox& b = boxes[j];
-      float ix = std::max(0.f, std::min(a.x + a.w, b.x + b.w) - std::max(a.x, b.x));
-      float iy = std::max(0.f, std::min(a.y + a.h, b.y + b.h) - std::max(a.y, b.y));
-      float inter = ix * iy;
-      float uni = a.w * a.h + b.w * b.h - inter + 1e-6f;
-      if (inter / uni > iou_thresh) removed[j] = 1;
-    }
-  }
-  return keep;
-}
-
 // ---------- Session 包装 ----------
 std::vector<std::string> GetInputNames(Ort::Session& s, Ort::AllocatorWithDefaultOptions& a) {
   std::vector<std::string> names;
@@ -95,12 +76,72 @@ std::vector<std::string> GetOutputNames(Ort::Session& s, Ort::AllocatorWithDefau
   return names;
 }
 
-// 找包含关键字的输出名的索引（找不到返回 -1）
-int FindIndex(const std::vector<std::string>& names, const char* key) {
-  for (size_t i = 0; i < names.size(); ++i) {
-    if (names[i].find(key) != std::string::npos) return static_cast<int>(i);
+bool NameHas(const std::string& n, const char* key) { return n.find(key) != std::string::npos; }
+
+struct OrtTensor {
+  const float* data = nullptr;
+  std::vector<int64_t> shape;
+  int64_t count = 0;
+};
+
+// 分数张量布局：[1,C,N] / [1,N,C] / [1,N]
+struct ScoreLayout {
+  int channels = 1;
+  int64_t n = 0;
+  bool cn = true;  // true: [1,C,N]，false: [1,N,C]
+  bool ok = false;
+};
+ScoreLayout ParseScoreLayout(const OrtTensor& t) {
+  ScoreLayout out;
+  const auto& s = t.shape;
+  if (s.size() == 3) {
+    int64_t d1 = s[1], d2 = s[2];
+    if (d1 <= 4 && d2 > d1) { out.channels = static_cast<int>(d1); out.n = d2; out.cn = true; out.ok = true; }
+    else if (d2 <= 4 && d1 > d2) { out.channels = static_cast<int>(d2); out.n = d1; out.cn = false; out.ok = true; }
+    else if (d1 == 1 && d2 == 1) { out.channels = 1; out.n = 1; out.cn = true; out.ok = true; }
+    return out;
   }
-  return -1;
+  if (s.size() == 2) { out.channels = 1; out.n = s[1]; out.cn = true; out.ok = true; }
+  return out;
+}
+
+// 框/关键点张量布局：[1,k,N] / [1,N,k]（k=4 或 10）
+struct BoxLayout {
+  int64_t n = 0;
+  int k = 4;
+  bool cn = true;  // true: [1,k,N]，false: [1,N,k]
+  bool ok = false;
+};
+BoxLayout ParseBoxLayout(const OrtTensor& t, int expectK) {
+  BoxLayout out;
+  out.k = expectK;
+  const auto& s = t.shape;
+  if (s.size() == 3) {
+    int64_t d1 = s[1], d2 = s[2];
+    if (d1 == expectK) { out.n = d2; out.cn = true; out.ok = true; }
+    else if (d2 == expectK) { out.n = d1; out.cn = false; out.ok = true; }
+    return out;
+  }
+  if (s.size() == 2 && s[1] == expectK) { out.n = 1; out.cn = false; out.ok = true; }  // [N,k] 缺 batch
+  return out;
+}
+
+// 常见步长网格：把 N 拆成 (input/stride)^2 的拼接（stride 8→16→32 顺序）
+bool SplitConcat(int64_t n, int input_size, std::vector<int>& strides, std::vector<int64_t>& offsets) {
+  static const int kCandidates[] = {8, 16, 32};
+  strides.clear(); offsets.clear();
+  int64_t off = 0;
+  for (int s : kCandidates) {
+    int64_t c = static_cast<int64_t>(input_size / s);
+    c *= c;
+    if (off + c > n) break;
+    strides.push_back(s);
+    offsets.push_back(off);
+    off += c;
+  }
+  if (strides.empty() || off != n) { strides.clear(); offsets.clear(); return false; }
+  offsets.push_back(off);  // 末尾哨兵
+  return true;
 }
 
 }  // namespace
@@ -115,7 +156,6 @@ class OnnxBackend : public IInferenceBackend {
 
   bool WarmUp() override {
     if (det_) {
-      // 空输入跑一次触发引擎/线程初始化（结果丢弃）
       try {
         ImageFrame dummy;
         dummy.width = 64; dummy.height = 64; dummy.channels = 3;
@@ -130,7 +170,7 @@ class OnnxBackend : public IInferenceBackend {
   bool Detect(const ImageFrame& frame, float det_thresh, std::vector<FaceBox>& out) override {
     if (!det_) return false;
     out.clear();
-    constexpr int kDetSize = 640;  // SCRFD 常用输入尺寸（模型不符可改或按输入 shape 自适应）
+    constexpr int kDetSize = 640;  // SCRFD 常用输入尺寸
     std::vector<std::string> inNames = GetInputNames(*det_, alloc_);
     std::vector<std::string> outNames = GetOutputNames(*det_, alloc_);
     if (inNames.empty() || outNames.empty()) return false;
@@ -139,74 +179,130 @@ class OnnxBackend : public IInferenceBackend {
     BgrToPlanar(frame, kDetSize, kDetSize, /*swapRgb=*/false, /*norm01=*/true, input);
     std::vector<int64_t> shape{1, 3, kDetSize, kDetSize};
 
-    const char* inName = inNames[0].c_str();
     Ort::MemoryInfo mem = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-    // 名称生命周期：GetInputNames 返回的 vector 在 inNames 存活期间有效，但 c_str 指针指向其元素；
-    // 此处立即使用，OK。
     Ort::Value inTensor = Ort::Value::CreateTensor<float>(mem, input.data(), input.size(), shape.data(), shape.size());
 
-    std::vector<const char*> inNamePtrs{inName};
+    std::vector<const char*> inNamePtrs{inNames[0].c_str()};
     std::vector<const char*> outNamePtrs;
     for (auto& n : outNames) outNamePtrs.push_back(n.c_str());
 
     auto outputs = det_->Run(Ort::RunOptions{nullptr}, inNamePtrs.data(), &inTensor, 1,
                              outNamePtrs.data(), outNamePtrs.size());
 
-    // SCRFD 输出约定：scores / bboxes / kps（不同版本命名 score_1 / bbox_1 / kps_1 等）
-    int scoreIdx = FindIndex(outNames, "score");
-    int boxIdx = FindIndex(outNames, "bbox");
-    int kpsIdx = FindIndex(outNames, "kps");
-    if (scoreIdx < 0 || boxIdx < 0) return false;
-    if (scoreIdx < 0 || boxIdx < 0 || static_cast<size_t>(scoreIdx) >= outputs.size() ||
-        static_cast<size_t>(boxIdx) >= outputs.size()) {
-      return false;
+    // 按类型分类输出（SCRFD 命名：score/bbox/kps，部分导出带 stride 后缀）
+    std::vector<OrtTensor> scoreTs, boxTs, kpsTs;
+    for (size_t i = 0; i < outputs.size(); ++i) {
+      if (!outputs[i].IsTensor()) continue;
+      OrtTensor t;
+      t.data = outputs[i].GetTensorData<float>();
+      t.shape = outputs[i].GetTensorTypeAndShapeInfo().GetShape();
+      t.count = outputs[i].GetTensorTypeAndShapeInfo().GetElementCount();
+      const std::string& nm = outNames[i];
+      if (NameHas(nm, "score")) scoreTs.push_back(t);
+      else if (NameHas(nm, "bbox") || NameHas(nm, "box")) boxTs.push_back(t);
+      else if (NameHas(nm, "kps") || NameHas(nm, "landmark")) kpsTs.push_back(t);
     }
+    if (boxTs.empty() || scoreTs.empty()) return false;
 
-    const auto& scoreInfo = outputs[scoreIdx].GetTensorTypeAndShapeInfo();
-    const auto& boxInfo = outputs[boxIdx].GetTensorTypeAndShapeInfo();
-    int64_t numAnchors = (scoreInfo.GetShape().size() >= 2) ? scoreInfo.GetShape()[1] : scoreInfo.GetElementCount();
-    const float* scores = outputs[scoreIdx].GetTensorData<float>();
-    const float* boxes = outputs[boxIdx].GetTensorData<float>();
-
-    // 缩放回原图
     const float sx = static_cast<float>(frame.width) / kDetSize;
     const float sy = static_cast<float>(frame.height) / kDetSize;
-    const float* kps = nullptr;
-    if (kpsIdx >= 0 && static_cast<size_t>(kpsIdx) < outputs.size()) {
-      kps = outputs[kpsIdx].GetTensorData<float>();
+    scrfd::DecodeOptions dopt;
+    dopt.det_thresh = det_thresh;
+
+    std::vector<scrfd::StrideOutput> strides;
+
+    // ---------- 布局 A：每 stride 一个输出（score_1/bbox_1 数量一致） ----------
+    if (boxTs.size() >= 2 && boxTs.size() == scoreTs.size()) {
+      for (size_t i = 0; i < boxTs.size(); ++i) {
+        BoxLayout bl = ParseBoxLayout(boxTs[i], 4);
+        ScoreLayout sl = ParseScoreLayout(scoreTs[i]);
+        if (!bl.ok || !sl.ok || bl.n != sl.n) { strides.clear(); break; }
+        scrfd::StrideOutput so;
+        so.stride = scrfd::InferStride(static_cast<int>(bl.n), kDetSize);
+        if (so.stride <= 0) { strides.clear(); break; }
+        so.count = static_cast<int>(bl.n);
+        so.scores = scoreTs[i].data;
+        so.score_channels = sl.channels;
+        so.score_face_channel = (sl.channels >= 2) ? 1 : 0;
+        so.score_cn = sl.cn;
+        so.boxes = boxTs[i].data;
+        so.box_cn = bl.cn;
+        for (const OrtTensor& kt : kpsTs) {
+          BoxLayout kl = ParseBoxLayout(kt, 10);
+          if (kl.ok && kl.n == bl.n) { so.kps = kt.data; so.kps_cn = kl.cn; break; }
+        }
+        strides.push_back(so);
+      }
     }
 
-    for (int64_t i = 0; i < numAnchors; ++i) {
-      float sc = scores[i];  // 单类输出；若为 [N,2]（face/背景）则取第 1 列
-      if (sc < det_thresh) continue;
-      FaceBox b;
-      // 多数导出为 [x1,y1,x2,y2]（输入图坐标系）；若为 [cx,cy,w,h] 需按注释切换
-      b.x = boxes[i * 4 + 0] * sx;
-      b.y = boxes[i * 4 + 1] * sy;
-      b.w = (boxes[i * 4 + 2] - boxes[i * 4 + 0]) * sx;
-      b.h = (boxes[i * 4 + 3] - boxes[i * 4 + 1]) * sy;
-      b.score = sc;
-      // 关键点（若有）：10 个值 [x*5,y*5]
-      if (kps) {
-        for (int k = 0; k < 5; ++k) {
-          b.kps[k * 2] = kps[i * 10 + k * 2] * sx;
-          b.kps[k * 2 + 1] = kps[i * 10 + k * 2 + 1] * sy;
+    // ---------- 布局 B：拼接单输出（锚点优先排布，stride 8→16→32） ----------
+    if (strides.empty() && boxTs.size() == 1 && scoreTs.size() == 1) {
+      BoxLayout bl = ParseBoxLayout(boxTs[0], 4);
+      ScoreLayout sl = ParseScoreLayout(scoreTs[0]);
+      if (bl.ok && sl.ok && bl.n == sl.n && !bl.cn && !sl.cn) {
+        std::vector<int> strList; std::vector<int64_t> offs;
+        if (SplitConcat(bl.n, kDetSize, strList, offs)) {
+          for (size_t i = 0; i < strList.size(); ++i) {
+            scrfd::StrideOutput so;
+            so.stride = strList[i];
+            so.count = static_cast<int>(offs[i + 1] - offs[i]);
+            so.scores = scoreTs[0].data + static_cast<size_t>(offs[i]) * sl.channels;
+            so.score_channels = sl.channels;
+            so.score_face_channel = (sl.channels >= 2) ? 1 : 0;
+            so.score_cn = false;
+            so.boxes = boxTs[0].data + static_cast<size_t>(offs[i]) * 4;
+            so.box_cn = false;
+            for (const OrtTensor& kt : kpsTs) {
+              BoxLayout kl = ParseBoxLayout(kt, 10);
+              if (kl.ok && kl.n == bl.n && !kl.cn) {
+                so.kps = kt.data + static_cast<size_t>(offs[i]) * 10;
+                so.kps_cn = false;
+                break;
+              }
+            }
+            strides.push_back(so);
+          }
         }
       }
-      // 越界保护
-      b.x = ClampF(b.x, 0, static_cast<float>(frame.width - 1));
-      b.y = ClampF(b.y, 0, static_cast<float>(frame.height - 1));
-      b.w = ClampF(b.w, 1, static_cast<float>(frame.width) - b.x);
-      b.h = ClampF(b.h, 1, static_cast<float>(frame.height) - b.y);
-      out.push_back(b);
-      if (out.size() >= 64) break;  // 单帧上限保护
     }
-    std::vector<int> keep = Nms(out, 0.4f);
-    std::vector<FaceBox> filtered;
-    filtered.reserve(keep.size());
-    for (int idx : keep) filtered.push_back(out[idx]);
-    out.swap(filtered);
-    return true;
+
+    if (!strides.empty()) {
+      out = scrfd::Decode(strides, kDetSize, sx, sy, dopt);
+      return true;
+    }
+
+    // ---------- 回退：绝对坐标框（旧布局 / yolo 类导出） ----------
+    if (boxTs.size() == 1 && scoreTs.size() == 1) {
+      BoxLayout bl = ParseBoxLayout(boxTs[0], 4);
+      ScoreLayout sl = ParseScoreLayout(scoreTs[0]);
+      if (bl.ok && sl.ok && bl.n == sl.n) {
+        const float* bd = boxTs[0].data;
+        const float* sd = scoreTs[0].data;
+        const int fc = (sl.channels >= 2) ? 1 : 0;
+        for (int64_t i = 0; i < bl.n && static_cast<int>(out.size()) < dopt.max_face_num; ++i) {
+          float score = sl.cn ? sd[static_cast<size_t>(fc) * bl.n + i]
+                              : sd[static_cast<size_t>(i) * sl.channels + fc];
+          if (score < det_thresh) continue;
+          auto B = [&](int k) { return bl.cn ? bd[static_cast<size_t>(k) * bl.n + i] : bd[static_cast<size_t>(i) * 4 + k]; };
+          float x1 = B(0) * sx, y1 = B(1) * sy, x2 = B(2) * sx, y2 = B(3) * sy;
+          if (!(x2 > x1 && y2 > y1)) continue;
+          FaceBox fb;
+          fb.x = ClampF(x1, 0, static_cast<float>(frame.width - 1));
+          fb.y = ClampF(y1, 0, static_cast<float>(frame.height - 1));
+          fb.w = std::min(x2 - x1, static_cast<float>(frame.width) - fb.x);
+          fb.h = std::min(y2 - y1, static_cast<float>(frame.height) - fb.y);
+          fb.score = score;
+          out.push_back(fb);
+        }
+        auto keep = NmsFiltered(out, dopt.nms_thresh);
+        std::vector<FaceBox> filtered;
+        filtered.reserve(keep.size());
+        for (int idx : keep) filtered.push_back(out[idx]);
+        out.swap(filtered);
+        return true;
+      }
+    }
+    return false;
   }
 
   bool Extract(const ImageFrame& aligned_face, Feature& out) override {
@@ -261,6 +357,23 @@ class OnnxBackend : public IInferenceBackend {
   }
 
  private:
+  std::vector<int> NmsFiltered(const std::vector<FaceBox>& boxes, float iou_thresh) {
+    std::vector<int> order(boxes.size());
+    std::iota(order.begin(), order.end(), 0);
+    std::sort(order.begin(), order.end(), [&](int a, int b) { return boxes[a].score > boxes[b].score; });
+    std::vector<int> keep;
+    std::vector<char> removed(boxes.size(), 0);
+    for (int idx : order) {
+      if (removed[idx]) continue;
+      keep.push_back(idx);
+      for (int j : order) {
+        if (removed[j]) continue;
+        if (scrfd::IoU(boxes[idx], boxes[j]) > iou_thresh) removed[j] = 1;
+      }
+    }
+    return keep;
+  }
+
   Ort::Env env_;
   Ort::SessionOptions sess_;
   Ort::AllocatorWithDefaultOptions alloc_;
