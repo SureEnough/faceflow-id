@@ -16,6 +16,7 @@
 #include "common/common.h"
 #include "config/mini_json.h"
 #include "store/recognition_store.h"
+#include "web/preview_store.h"
 
 namespace eb {
 namespace web {
@@ -32,7 +33,7 @@ void FailResp(httplib::Response& res, int code, const std::string& msg) {
   std::map<std::string, Json> o;
   o["code"] = Json::Number(static_cast<double>(code));
   o["message"] = Json::String(msg);
-  res.status = (code == 401) ? 401 : 400;
+  res.status = (code == 401) ? 401 : (code == 404 ? 404 : 400);
   res.set_content(Json::Object(std::move(o)).Dump(), "application/json; charset=utf-8");
 }
 
@@ -161,6 +162,21 @@ bool WebServer::Start(int port, const std::string& username, const std::string& 
       }
       OkResp(res, Json::Array(std::move(arr)).Dump());
       LOG_INFO("web snapshots: limit=%d hits=%zu", limit, recs.size());
+    });
+
+    svr->Get("/api/preview", [&](const httplib::Request& req, httplib::Response& res) {
+      if (!guard(req, res)) return;
+      if (!preview_ || !req.has_param("camera_id")) {
+        FailResp(res, 400, "preview unavailable or camera_id required");
+        return;
+      }
+      std::string mime, b64;
+      if (!preview_->Get(req.get_param_value("camera_id"), mime, b64)) {
+        FailResp(res, 404, "no preview frame for camera");
+        return;
+      }
+      // mime 固定值 + base64 为 URL 安全字符，无需 JSON 转义
+      OkResp(res, "{\"mime\":\"" + mime + "\",\"b64\":\"" + b64 + "\"}");
     });
 
     svr->Post("/api/reload", [&](const httplib::Request& req, httplib::Response& res) {

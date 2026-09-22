@@ -22,6 +22,7 @@
 #include "report/report_client.h"
 #include "store/recognition_store.h"
 #include "web/config_manager.h"
+#include "web/preview_store.h"
 #include "web/web_server.h"
 
 namespace {
@@ -136,9 +137,10 @@ int main(int argc, char** argv) {
   }
 
   // Web 配置界面（后台线程）
+  std::unique_ptr<eb::web::PreviewStore> preview = std::make_unique<eb::web::PreviewStore>();
   std::unique_ptr<eb::web::WebServer> web;
   if (cfg.web_enabled && !cfg.web_password.empty()) {
-    web = std::make_unique<eb::web::WebServer>(&cm, &board, store.get());
+    web = std::make_unique<eb::web::WebServer>(&cm, &board, store.get(), preview.get());
     if (web->Start(cfg.web_port, cfg.web_username, cfg.web_password, cfg.web_static_dir,
                    g_web_stop)) {
       LOG_INFO("web UI started: http://0.0.0.0:%d (login %s)", cfg.web_port,
@@ -172,11 +174,14 @@ int main(int argc, char** argv) {
   auto startWorkers = [&](const eb::Config& c) {
     const int max_frames = c.max_frames;
     for (auto& p : pipelines) {
-      workers.emplace_back([p = p.get(), &workers_stop, &total_frames, max_frames]() {
+      workers.emplace_back([p = p.get(), preview = preview.get(), &workers_stop, &total_frames,
+                             max_frames]() {
         const auto interval = std::chrono::milliseconds(1000 / eb::kTargetFps);
         while (!workers_stop.load() && !g_stop && !g_web_stop.load() &&
                (max_frames <= 0 || total_frames.load() < max_frames)) {
           if (p->ProcessOneFrame()) total_frames.fetch_add(1);
+          // 预览缓存（节流编码，Web /api/preview 用）
+          preview->Capture(p->camera_id(), p->FrameSnapshot());
           std::this_thread::sleep_for(interval);  // 每路限速 kTargetFps
         }
       });

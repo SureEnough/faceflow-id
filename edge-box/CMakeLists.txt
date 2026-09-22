@@ -47,6 +47,7 @@ set(EDGE_BOX_SHARED_SOURCES
   src/pipeline/pipeline.cpp
   src/tracker/iou_tracker.cpp
   src/web/config_manager.cpp
+  src/web/preview_store.cpp
   src/web/web_server.cpp
   src/flow/flow_counter.cpp
   src/recognizer/recognizer.cpp
@@ -111,6 +112,7 @@ add_test(NAME smoke COMMAND edge_box_smoke)
 if(CPPHTTPLIB_INCLUDE_DIR)
   add_executable(edge_box_web_test tests/web_test.cpp
     src/web/config_manager.cpp
+    src/web/preview_store.cpp
     src/web/web_server.cpp
     src/common/image_codec.cpp
     src/config/config.cpp

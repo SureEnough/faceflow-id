@@ -12,6 +12,7 @@
 #include "common/base64.h"
 #include "config/config.h"
 #include "web/config_manager.h"
+#include "web/preview_store.h"
 #include "web/web_server.h"
 #include "store/recognition_store.h"
 
@@ -228,6 +229,44 @@ int main() {
           "snapshots limit honored (newest first)");
     ws2.Stop();
     delete store;
+  }
+
+  // GET /api/preview（注入 PreviewStore）：鉴权 + 有帧 200 / 未知相机 404
+  {
+    eb::web::PreviewStore pv;
+    {
+      eb::ImageFrame f;
+      f.width = 32; f.height = 24; f.channels = 3;
+      f.data.assign(static_cast<size_t>(32) * 24 * 3, 128);
+      CHECK(pv.Capture("cam-p", f), "preview capture synthetic frame");
+    }
+    const int port3 = FreePort();
+    std::atomic<bool> stop3{false};
+    eb::web::WebServer ws3(&cm, &board, nullptr, &pv);
+    CHECK(ws3.Start(port3, "admin", "pass123", "/tmp/edge_box_no_dist", stop3), "preview ws start");
+    httplib::Client cli3("http://127.0.0.1:" + std::to_string(port3));
+    cli3.set_connection_timeout(2);
+    bool up3 = false;
+    for (int i = 0; i < 50; ++i) {
+      auto res = cli3.Get("/api/status");
+      if (res) { up3 = true; break; }
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    CHECK(up3, "preview ws ready");
+    httplib::Headers auth3 = {{"Authorization", "Basic YWRtaW46cGFzczEyMw=="}};
+    auto res1 = cli3.Get("/api/preview?camera_id=cam-p", auth3);
+    CHECK(res1 && res1->status == 200, "preview with frame -> 200");
+    if (res1 && res1->status == 200) {
+      CHECK(res1->body.find("\"b64\"") != std::string::npos &&
+            res1->body.find("\"mime\"") != std::string::npos,
+            "preview fields present");
+      CHECK(res1->body.size() > 64, "preview payload non-trivial");
+    }
+    auto res2 = cli3.Get("/api/preview?camera_id=unknown", auth3);
+    CHECK(res2 && res2->status == 404, "preview unknown camera -> 404");
+    auto res3 = cli3.Get("/api/preview?camera_id=cam-p");
+    CHECK(res3 && res3->status == 401, "preview without auth -> 401");
+    ws3.Stop();
   }
 
   ws.Stop();

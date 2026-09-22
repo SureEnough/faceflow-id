@@ -3,9 +3,11 @@ import {
   Button,
   Card,
   Col,
+  Empty,
   Form,
   Input,
   InputNumber,
+  Modal,
   Popconfirm,
   Row,
   Select,
@@ -13,8 +15,9 @@ import {
   Switch,
   message,
 } from 'antd'
-import { DeleteOutlined, PlusOutlined } from '@ant-design/icons'
-import { fetchConfig, saveConfig, triggerReload } from '../api'
+import { DeleteOutlined, EyeOutlined, PlusOutlined } from '@ant-design/icons'
+import { fetchConfig, fetchPreview, saveConfig, triggerReload } from '../api'
+import type { PreviewFrame } from '../api'
 import type { CameraCfg } from '../types'
 
 interface InstrumentedCam extends CameraCfg {
@@ -36,6 +39,41 @@ export default function CamerasTab({ onSaved }: { onSaved: () => void }) {
   }, [])
 
   const dirty = useMemo(() => rows.some((r) => !r.camera_id || !r.url), [rows])
+
+  // ---- 画面预览 ----
+  const [previewCam, setPreviewCam] = useState<InstrumentedCam | null>(null)
+  const [frame, setFrame] = useState<PreviewFrame | null>(null)
+  const [previewErr, setPreviewErr] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!previewCam) return
+    let alive = true
+    let timer: number | undefined
+    const tick = async () => {
+      try {
+        const f = await fetchPreview(previewCam.camera_id)
+        if (!alive) return
+        setFrame(f)
+        setPreviewErr(null)
+      } catch (e) {
+        if (!alive) return
+        // 404 = 该相机暂无缓存帧（摄像头未打开/未采集）
+        setPreviewErr((e as Error)?.message || '无画面')
+      }
+    }
+    tick()
+    timer = window.setInterval(tick, 1500)
+    return () => {
+      alive = false
+      if (timer) window.clearInterval(timer)
+    }
+  }, [previewCam])
+
+  const closePreview = () => {
+    setPreviewCam(null)
+    setFrame(null)
+    setPreviewErr(null)
+  }
 
   const addRow = () => {
     const next = [...rows, {
@@ -84,9 +122,15 @@ export default function CamerasTab({ onSaved }: { onSaved: () => void }) {
           style={{ marginBottom: 12 }}
           title={`摄像头 ${r.camera_id || '(未命名)'}`}
           extra={
-            <Popconfirm title="确认删除该摄像头？" onConfirm={() => removeRow(r.key)}>
-              <Button size="small" danger icon={<DeleteOutlined />} />
-            </Popconfirm>
+            <Space size={4}>
+              <Button size="small" icon={<EyeOutlined />} disabled={!r.camera_id}
+                      onClick={() => { setFrame(null); setPreviewErr(null); setPreviewCam(r) }}>
+                预览
+              </Button>
+              <Popconfirm title="确认删除该摄像头？" onConfirm={() => removeRow(r.key)}>
+                <Button size="small" danger icon={<DeleteOutlined />} />
+              </Popconfirm>
+            </Space>
           }
         >
           <Row gutter={12}>
@@ -172,6 +216,32 @@ export default function CamerasTab({ onSaved }: { onSaved: () => void }) {
           保存并应用（重建流水线）
         </Button>
       </Space>
+
+      <Modal
+        open={!!previewCam}
+        title={`画面预览 · ${previewCam?.camera_id || ''}`}
+        footer={null}
+        onCancel={closePreview}
+        width={560}
+      >
+        <div style={{ textAlign: 'center', minHeight: 200, padding: '8px 0' }}>
+          {frame ? (
+            <img
+              src={`data:${frame.mime};base64,${frame.b64}`}
+              alt="preview"
+              style={{ maxWidth: '100%', maxHeight: 380, borderRadius: 6, background: '#000' }}
+            />
+          ) : (
+            <Empty
+              description={previewErr ? '暂无画面（摄像头未打开或未采集到帧）' : '加载中…'}
+              style={{ paddingTop: 48 }}
+            />
+          )}
+        </div>
+        <div style={{ textAlign: 'center', color: '#999', fontSize: 12 }}>
+          约 1.5 秒刷新一帧；预览来自边缘盒本机，不占用后台带宽
+        </div>
+      </Modal>
     </Card>
   )
 }

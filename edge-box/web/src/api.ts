@@ -52,4 +52,12 @@ export const saveConfig = (cfg: Partial<EdgeBoxConfig>) =>
 export const triggerReload = () => unwrap<Record<string, never>>(api.post('/reload'))
 export const fetchSnapshots = (limit = 20) =>
   unwrap<Snapshot[]>(api.get('/snapshots', { params: { limit } }))
+
+// 画面预览快照：返回 {mime, b64}（如 image/jpeg / image/bmp）
+export interface PreviewFrame {
+  mime: string
+  b64: string
+}
+export const fetchPreview = (cameraId: string) =>
+  unwrap<PreviewFrame>(api.get('/preview', { params: { camera_id: cameraId } }))
 export const triggerRestart = () => unwrap<Record<string, never>>(api.post('/restart'))

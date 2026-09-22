@@ -4,6 +4,7 @@
 //   GET  /                  前端（web/dist 静态托管；缺失时提示构建）
 //   GET  /api/status        运行状态（StatusBoard）
 //   GET  /api/snapshots     最近抓拍记录（RecognitionStore::Recent，limit 默认 10，上限 50）
+//   GET  /api/preview       画面预览快照（PreviewStore，camera_id 必填；返回 {mime,b64}）
 //   GET  /api/config        当前配置（device_psk/web_password 掩码）
 //   PUT  /api/config        更新配置（校验 + 原子写盘 + 置重载标记）
 //   POST /api/reload        触发热重载（重新读取磁盘配置）
@@ -23,10 +24,13 @@ class RecognitionStore;  // 前置声明：仅持指针（store 生命周期归 
 namespace eb {
 namespace web {
 
+class PreviewStore;  // 前置声明：仅持指针
+
 class WebServer {
  public:
-  WebServer(ConfigManager* cm, StatusBoard* status, RecognitionStore* store = nullptr)
-      : cm_(cm), status_(status), store_(store) {}
+  WebServer(ConfigManager* cm, StatusBoard* status, RecognitionStore* store = nullptr,
+            PreviewStore* preview = nullptr)
+      : cm_(cm), status_(status), store_(store), preview_(preview) {}
   ~WebServer();
 
   // 启动 HTTP 服务（内部独立线程，立即返回）；失败返回 false
@@ -39,6 +43,7 @@ class WebServer {
   ConfigManager* cm_;
   StatusBoard* status_;
   RecognitionStore* store_;  // 最近抓拍数据源（nullptr 时 /api/snapshots 返回空）
+  PreviewStore* preview_;    // 画面预览缓存（nullptr 时 /api/preview 返回 400）
   void* server_ = nullptr;  // HAVE_CPPHTTPLIB 时持有 httplib::Server*
   void* thread_ = nullptr;  // HAVE_CPPHTTPLIB 时持有 std::thread*
 };

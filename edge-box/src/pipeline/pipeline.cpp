@@ -14,6 +14,11 @@ Pipeline::Pipeline(CameraConfig cam, int64_t device_id, FaceEngine* face, Recogn
   video_ = CreateVideoSource(cam_.url);
 }
 
+ImageFrame Pipeline::FrameSnapshot() const {
+  std::lock_guard<std::mutex> lk(frame_mu_);
+  return last_frame_;
+}
+
 bool Pipeline::Open() {
   if (!video_->Open()) {
     LOG_ERROR("open video source failed: %s", cam_.url.c_str());
@@ -33,6 +38,10 @@ bool Pipeline::ProcessOneFrame() {
   }
   last_frame_ok_.store(true);
   frames_.fetch_add(1);
+  {
+    std::lock_guard<std::mutex> lk(frame_mu_);
+    last_frame_ = frame;  // 供 Web 预览读取最近帧
+  }
 
   // 1. 检测 + 采样（得分最高框）
   FaceSample sample;

@@ -90,6 +90,7 @@ API（Basic Auth，`web_username`/`web_password`）：
 |---|---|---|
 | GET | `/api/status` | 运行状态 JSON |
 | GET | `/api/snapshots` | 最近抓拍记录（`limit` 默认 10，上限 50：轨道/相机/时间/命中/相似度/base64 图） |
+| GET | `/api/preview` | 画面预览快照（`camera_id` 必填：返回 {mime,b64}；无缓存帧 404；每路节流 1s 编码） |
 | GET | `/api/config` | 当前配置（PSK/密码掩码） |
 | PUT | `/api/config` | 更新配置（校验 + 原子写盘 + 置重载标记） |
 | POST | `/api/reload` | 重新读取磁盘配置并热重载 |
@@ -104,6 +105,7 @@ API（Basic Auth，`web_username`/`web_password`）：
 - ✅ 设备注册 + 心跳：`POST /devices/register` + `/devices/:id/heartbeat`（含子摄像头在线状态）
 - ✅ 后台配置下发：边缘盒轮询应用远程配置并热重载（设备身份/Web 安全字段本地优先，防循环）
 - ✅ Web 配置界面（C++ httplib Server + Vite/React/TS/Antd6 前端，Basic Auth，左侧菜单布局：仪表盘/摄像头管理/最近抓拍记录/系统配置）
+- ✅ 摄像头画面预览（`/api/preview`：Worker 线程每路节流编码最近一帧，JPEG/BMP；前端预览弹窗 1.5s 轮询）
 - ✅ 配置热重载：摄像头增改立即生效（重建流水线），上报端点/PSK 变化自动重建客户端
 - ✅ Web UI 浏览器验证（Playwright + Chromium 无头）：登录弹窗、状态页、摄像头页、参数页 13 项断言全过；本地打开 `http://<IP>:8180` 走查
 
