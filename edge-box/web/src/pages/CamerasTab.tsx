@@ -144,16 +144,7 @@ export default function CamerasTab({ onSaved }: { onSaved: () => void }) {
                 <Input value={r.url} onChange={(e) => patchRow(r.key, { url: e.target.value })} />
               </Form.Item>
             </Col>
-            <Col span={4}>
-              <Form.Item label="角色">
-                <Select
-                  value={r.role}
-                  onChange={(v) => patchRow(r.key, { role: v })}
-                  options={[{ value: 'entrance', label: 'entrance' }, { value: 'counter', label: 'counter' }]}
-                />
-              </Form.Item>
-            </Col>
-            <Col span={2}>
+            <Col span={6}>
               <Form.Item label="计入客流" valuePropName="checked">
                 <Switch size="small" checked={r.count_flow} onChange={(v) => patchRow(r.key, { count_flow: v })} />
               </Form.Item>
