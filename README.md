@@ -92,9 +92,9 @@ npm run dev                                   # http://localhost:5173，admin/ad
 ```bash
 cd edge-box
 cmake -B build && cmake --build build
-# 首次用最小配置启动（可先复制 config/edge_box.json.example）：
-# 部署参数（后台地址/PSK/阈值/Web 账号等）随后都在 Web 界面维护，无需手改 JSON。
+# 零配置启动：无 edge_box.json 时用出厂默认（Web http://<IP>:8180，admin/admin123，首次登录请改密码）
 ./build/edge_box -c edge_box.json            # 默认 Mock 推理；Web 配置界面 :8180（默认）
+# 部署参数（后台地址/PSK/阈值/摄像头/Web 账号）全部在 Web 界面配置，保存即热重载并生成配置文件
 ```
 
 - **Mock / 真实推理如何决定**：

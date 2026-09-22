@@ -64,12 +64,12 @@ cd e2e && npm install && npm run e2e:install && npm run e2e:edge
 ## 运行
 
 ```bash
-# 首次用最小配置启动（可先复制 config/edge_box.json.example）：
+# 零配置启动：无 edge_box.json 时用出厂默认（Web http://<IP>:8180，admin/admin123，首次登录请改密码）
 ./build/edge_box -c edge_box.json -backend mock
 # 有模型时：
 ./build/edge_box -c edge_box.json -backend onnx
-# 部署参数（后台地址/PSK/阈值/摄像头/Web 账号）随后在 Web 界面“系统配置/摄像头管理”维护，
-# 保存即热重载，无需手改 JSON。
+# 部署参数（后台地址/PSK/阈值/摄像头/Web 账号）全部在 Web 界面“系统配置/摄像头管理”维护，
+# 保存即热重载并生成配置文件；首次登录后务必修改默认 Web 密码。
 ```
 
 ## Web 配置界面

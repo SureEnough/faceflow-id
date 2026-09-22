@@ -99,11 +99,18 @@ int main(int argc, char** argv) {
 
   eb::Config cfg;
   if (!eb::Config::LoadFile(cfg_path, cfg)) {
-    LOG_ERROR("load config failed: %s", cfg_path.c_str());
-    return 1;
+    // 开箱即用：无配置文件时用出厂默认启动（Web 界面开启，默认 admin/admin123），
+    // 部署参数在 Web 界面“系统配置”维护，保存后即生成配置文件。
+    LOG_WARN("config %s not found, start with factory defaults "
+             "(web UI http://0.0.0.0:8180  admin/admin123 -- change password after first login)",
+             cfg_path.c_str());
+    cfg = eb::Config{};
+    cfg.web_enabled = true;
+    cfg.web_password = "admin123";
+    cfg.SaveFile(cfg_path);
   }
-  LOG_INFO("config loaded: %zu camera(s), device=%lld", cfg.cameras.size(),
-           static_cast<long long>(cfg.device_id));
+  LOG_INFO("config loaded: %zu camera(s), device=%lld (web_enabled=%d)", cfg.cameras.size(),
+           static_cast<long long>(cfg.device_id), static_cast<int>(cfg.web_enabled));
 
   eb::web::ConfigManager cm(cfg_path, cfg);
   eb::web::StatusBoard board;
@@ -132,8 +139,8 @@ int main(int argc, char** argv) {
   };
   applyConfig(cfg);
   if (pipelines.empty()) {
-    LOG_ERROR("no pipeline opened");
-    return 1;
+    // 无摄像头也常驻：等待 Web 界面配置摄像头后热重载（不退出）
+    LOG_WARN("no camera pipeline opened, waiting for configuration via web UI");
   }
 
   // Web 配置界面（后台线程）
@@ -219,8 +226,8 @@ int main(int argc, char** argv) {
       cfg = cm.Snapshot();
       applyConfig(cfg);
       if (pipelines.empty()) {
-        LOG_ERROR("reload produced no open pipelines");
-        break;
+        // 配置变更后无可用摄像头：常驻等待，不退出
+        LOG_WARN("reload produced no open pipeline, waiting for camera config");
       }
       startWorkers(cfg);
       LOG_INFO("config reloaded: %zu camera(s)", cfg.cameras.size());
