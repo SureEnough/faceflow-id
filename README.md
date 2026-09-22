@@ -88,9 +88,11 @@ cd enrollment-pc && cmake -B build && cmake --build build && ctest --test-dir bu
 ### 🚧 待部署/待真机
 
 - [ ] ONNX 阈值/输入尺寸真机标定（默认 640/112、det 0.5 / recog 0.40 / verify 0.50）
-- [ ] 录入端特征提取与活体接入（ONNXRuntime），华视/精伦读卡器 SDK 适配
-- [ ] 边缘盒抓拍图上传（对象存储）与多路线程池（文档 4.1.6）
-- [ ] 生产环境实际部署（MySQL/MinIO/HTTPS 按 `docs/deployment.md` 执行）
+- [x] 录入端特征提取与活体接入（ONNXRuntime，src/feature/，与 edge-box 同向量空间）
+- [ ] 华视/精伦读卡器 SDK 适配（enrollment-pc，需厂商 SDK）
+- [x] 边缘盒多路线程池（文档 4.1.6）与抓拍图上报（base64 → 后台）
+- [x] 快照存储抽象 `internal/object`（默认 Local 本地磁盘；MinIO/OBS 为可选扩展，**局域网部署无需**）
+- [ ] 生产环境实际部署（MySQL/HTTPS 按 `docs/deployment.md` 执行；对象存储按需选用 Local 或 MinIO）
 
 ## 参考
 
