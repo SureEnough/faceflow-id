@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { EdgeBoxConfig, EdgeBoxStatus } from './types'
+import type { EdgeBoxConfig, EdgeBoxStatus, Snapshot } from './types'
 
 export interface ApiResp<T> {
   code: number
@@ -50,4 +50,6 @@ export const fetchConfig = () => unwrap<EdgeBoxConfig>(api.get('/config'))
 export const saveConfig = (cfg: Partial<EdgeBoxConfig>) =>
   unwrap<Record<string, never>>(api.put('/config', cfg))
 export const triggerReload = () => unwrap<Record<string, never>>(api.post('/reload'))
+export const fetchSnapshots = (limit = 20) =>
+  unwrap<Snapshot[]>(api.get('/snapshots', { params: { limit } }))
 export const triggerRestart = () => unwrap<Record<string, never>>(api.post('/restart'))

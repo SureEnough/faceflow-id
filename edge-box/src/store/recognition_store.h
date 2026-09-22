@@ -24,6 +24,9 @@ class RecognitionStore {
   // 取出待上报记录并标记为已上报（上报成功后调用 MarkConfirmed）
   virtual std::vector<StoredRecognition> Pending(int limit) = 0;
 
+  // 取最近 N 条记录（按时间倒序；Web 端“最近抓拍”用）
+  virtual std::vector<StoredRecognition> Recent(int limit) = 0;
+
   // 将待上报记录标记成功（按 track_id + camera_id + created_at）
   virtual void MarkConfirmed(const Recognition& rec) = 0;
 

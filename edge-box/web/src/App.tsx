@@ -5,23 +5,42 @@ import {
   Form,
   Input,
   Layout,
+  Menu,
   Modal,
   Space,
-  Tabs,
   message,
 } from 'antd'
+import type { MenuProps } from 'antd'
 import {
   ApiOutlined,
   CameraOutlined,
   DashboardOutlined,
+  HistoryOutlined,
   SettingOutlined,
 } from '@ant-design/icons'
 import { clearAuthB64, getAuthB64, setAuthB64, triggerRestart as restart } from './api'
 import StatusTab from './pages/StatusTab'
 import ConfigTab from './pages/ConfigTab'
 import CamerasTab from './pages/CamerasTab'
+import SnapshotsTab from './pages/SnapshotsTab'
 
-const { Header, Content } = Layout
+const { Header, Sider, Content } = Layout
+
+type PageKey = 'dashboard' | 'cameras' | 'snapshots' | 'config'
+
+const MENU_ITEMS: MenuProps['items'] = [
+  { key: 'dashboard', icon: <DashboardOutlined />, label: '仪表盘' },
+  { key: 'cameras', icon: <CameraOutlined />, label: '摄像头管理' },
+  { key: 'snapshots', icon: <HistoryOutlined />, label: '最近抓拍记录' },
+  { key: 'config', icon: <SettingOutlined />, label: '系统配置' },
+]
+
+const PAGE_TITLE: Record<PageKey, string> = {
+  dashboard: '仪表盘',
+  cameras: '摄像头管理',
+  snapshots: '最近抓拍记录',
+  config: '系统配置',
+}
 
 export default function App() {
   const [authed, setAuthed] = useState(() => getAuthB64().length > 0)
@@ -29,6 +48,7 @@ export default function App() {
   const [loginLoading, setLoginLoading] = useState(false)
   const [restarting, setRestarting] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [page, setPage] = useState<PageKey>('dashboard')
 
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), [])
 
@@ -82,37 +102,48 @@ export default function App() {
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      <Header style={{ color: '#fff', display: 'flex', alignItems: 'center', gap: 16 }}>
-        <ApiOutlined />
-        <span style={{ fontSize: 16, fontWeight: 600 }}>FaceFlow 边缘盒配置</span>
-        <span style={{ opacity: 0.7, fontSize: 13 }}>Edge-box Web Console</span>
-        <div style={{ flex: 1 }} />
-        {authed ? (
-          <Space>
-            <Button size="small" danger onClick={onRestart} loading={restarting}>
-              重启进程
-            </Button>
-            <Button size="small" onClick={onLogout}>
-              退出登录
-            </Button>
-          </Space>
-        ) : null}
-      </Header>
-      <Content style={{ padding: 16, maxWidth: 1200, width: '100%', margin: '0 auto' }}>
-        {authed ? (
-          <Tabs
-            key={refreshKey}
-            defaultActiveKey="status"
-            items={[
-              { key: 'status', label: <span><DashboardOutlined /> 运行状态</span>, children: <StatusTab /> },
-              { key: 'config', label: <span><SettingOutlined /> 全局参数</span>, children: <ConfigTab onSaved={refresh} /> },
-              { key: 'cameras', label: <span><CameraOutlined /> 摄像头</span>, children: <CamerasTab onSaved={refresh} /> },
-            ]}
-          />
-        ) : (
-          <Alert type="info" showIcon message="请登录以查看与配置边缘盒" style={{ maxWidth: 480, margin: '40px auto' }} />
-        )}
-      </Content>
+      <Sider width={220} theme="dark">
+        <div style={{ padding: 16, color: '#fff', fontWeight: 600, fontSize: 15 }}>
+          🏪 FaceFlow 边缘盒
+        </div>
+        <Menu
+          theme="dark"
+          mode="inline"
+          selectedKeys={[page]}
+          items={MENU_ITEMS}
+          onClick={({ key }) => setPage(key as PageKey)}
+        />
+      </Sider>
+      <Layout>
+        <Header style={{ background: '#fff', paddingInline: 24, display: 'flex', alignItems: 'center', gap: 16 }}>
+          <ApiOutlined style={{ color: '#1677ff' }} />
+          <span style={{ fontSize: 15, fontWeight: 600 }}>{PAGE_TITLE[page]}</span>
+          <span style={{ opacity: 0.6, fontSize: 13 }}>Edge-box Web Console</span>
+          <div style={{ flex: 1 }} />
+          {authed ? (
+            <Space>
+              <Button size="small" danger onClick={onRestart} loading={restarting}>
+                重启进程
+              </Button>
+              <Button size="small" onClick={onLogout}>
+                退出登录
+              </Button>
+            </Space>
+          ) : null}
+        </Header>
+        <Content style={{ padding: 16 }}>
+          {authed ? (
+            <div key={refreshKey}>
+              {page === 'dashboard' && <StatusTab />}
+              {page === 'cameras' && <CamerasTab onSaved={refresh} />}
+              {page === 'snapshots' && <SnapshotsTab />}
+              {page === 'config' && <ConfigTab onSaved={refresh} />}
+            </div>
+          ) : (
+            <Alert type="info" showIcon message="请登录以查看与配置边缘盒" style={{ maxWidth: 480, margin: '40px auto' }} />
+          )}
+        </Content>
+      </Layout>
       <Modal
         title="登录边缘盒"
         open={loginOpen}

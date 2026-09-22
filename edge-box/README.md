@@ -89,6 +89,7 @@ API（Basic Auth，`web_username`/`web_password`）：
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | `/api/status` | 运行状态 JSON |
+| GET | `/api/snapshots` | 最近抓拍记录（`limit` 默认 10，上限 50：轨道/相机/时间/命中/相似度/base64 图） |
 | GET | `/api/config` | 当前配置（PSK/密码掩码） |
 | PUT | `/api/config` | 更新配置（校验 + 原子写盘 + 置重载标记） |
 | POST | `/api/reload` | 重新读取磁盘配置并热重载 |
@@ -102,7 +103,7 @@ API（Basic Auth，`web_username`/`web_password`）：
 - ✅ 抓拍图快照：新轨迹首帧编码对齐人脸图（OpenCV JPEG / 无依赖 BMP）随记录上报，后台对象存储转存
 - ✅ 设备注册 + 心跳：`POST /devices/register` + `/devices/:id/heartbeat`（含子摄像头在线状态）
 - ✅ 后台配置下发：边缘盒轮询应用远程配置并热重载（设备身份/Web 安全字段本地优先，防循环）
-- ✅ Web 配置界面（C++ httplib Server + Vite/React/TS/Antd6 前端，Basic Auth）
+- ✅ Web 配置界面（C++ httplib Server + Vite/React/TS/Antd6 前端，Basic Auth，左侧菜单布局：仪表盘/摄像头管理/最近抓拍记录/系统配置）
 - ✅ 配置热重载：摄像头增改立即生效（重建流水线），上报端点/PSK 变化自动重建客户端
 - ✅ Web UI 浏览器验证（Playwright + Chromium 无头）：登录弹窗、状态页、摄像头页、参数页 13 项断言全过；本地打开 `http://<IP>:8180` 走查
 

@@ -50,3 +50,15 @@ export interface EdgeBoxStatus {
   sync_version: number
   cameras: CameraStatus[]
 }
+// 最近抓拍记录（GET /api/snapshots）
+export interface Snapshot {
+  track_id: string
+  camera_id: string
+  created_at: number
+  customer_id: number | null
+  person_type: number
+  similarity: number
+  direction: number
+  snapshot_mime: string
+  snapshot: string // base64 图片（data 部分）
+}

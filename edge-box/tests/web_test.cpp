@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cstdio>
 #include <cstring>
+#include <ctime>
 #include <string>
 #include <thread>
 
@@ -12,6 +13,7 @@
 #include "config/config.h"
 #include "web/config_manager.h"
 #include "web/web_server.h"
+#include "store/recognition_store.h"
 
 #if defined(HAVE_CPPHTTPLIB)
 #include <httplib.h>
@@ -174,6 +176,58 @@ int main() {
     CHECK(res && res->status == 200, "restart -> 200");
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     CHECK(stop_flag.load(), "stop_flag set by restart");
+  }
+
+  // GET /api/snapshots（注入 MemStore）→ 鉴权 + 最近 N 条
+  {
+    auto* store = eb::CreateMemStore();
+    const int64_t base = static_cast<int64_t>(std::time(nullptr));
+    for (int i = 0; i < 3; ++i) {
+      eb::Recognition rec;
+      rec.track_id = "snap-t" + std::to_string(i);
+      rec.camera_id = "cam-t";
+      rec.created_at = base + i;               // i 越大越新
+      rec.snapshot_b64 = "QUJD";               // 假 base64（ABC）
+      rec.snapshot_mime = "image/jpeg";
+      rec.customer_id = (i == 0) ? 5 : -1;     // 最新一条命中顾客 5
+      rec.similarity = 0.77f;
+      store->Insert(rec);
+    }
+    const int port2 = FreePort();
+    std::atomic<bool> stop2{false};
+    eb::web::WebServer ws2(&cm, &board, store);
+    CHECK(ws2.Start(port2, "admin", "pass123", "/tmp/edge_box_no_dist", stop2), "snapshots ws start");
+    httplib::Client cli2("http://127.0.0.1:" + std::to_string(port2));
+    cli2.set_connection_timeout(2);
+    bool up2 = false;
+    for (int i = 0; i < 50; ++i) {
+      auto res = cli2.Get("/api/status");
+      if (res) { up2 = true; break; }
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    CHECK(up2, "snapshots ws ready");
+    {
+      auto res = cli2.Get("/api/snapshots");
+      CHECK(res && res->status == 401, "snapshots without auth -> 401");
+    }
+    httplib::Headers auth2 = {{"Authorization", "Basic YWRtaW46cGFzczEyMw=="}};  // admin:pass123
+    auto res = cli2.Get("/api/snapshots?limit=3", auth2);
+    CHECK(res && res->status == 200, "snapshots with auth -> 200");
+    if (res && res->status == 200) {
+      const std::string& b = res->body;
+      CHECK(b.find(R"("total")") == std::string::npos && b.find("snap-t1") != std::string::npos,
+            "snapshots list contains records");
+      CHECK(b.find("snap-t2") != std::string::npos, "snapshots newest included");
+      CHECK(b.find("customer_id") != std::string::npos && b.find("snapshot") != std::string::npos,
+            "snapshots fields present");
+      CHECK(b.find("QUJD") != std::string::npos, "snapshot base64 present");
+    }
+    auto resL = cli2.Get("/api/snapshots?limit=1", auth2);
+    CHECK(resL && resL->status == 200 && resL->body.find("snap-t2") != std::string::npos &&
+          resL->body.find("snap-t1") == std::string::npos,
+          "snapshots limit honored (newest first)");
+    ws2.Stop();
+    delete store;
   }
 
   ws.Stop();

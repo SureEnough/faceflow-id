@@ -28,6 +28,16 @@ class MemStore : public RecognitionStore {
     return out;
   }
 
+  std::vector<StoredRecognition> Recent(int limit) override {
+    std::lock_guard<std::mutex> lk(mu_);
+    std::vector<StoredRecognition> out;
+    // deque 尾部最新；倒序取 limit 条
+    for (auto it = items_.rbegin(); it != items_.rend() && static_cast<int>(out.size()) < limit; ++it) {
+      out.push_back(*it);
+    }
+    return out;
+  }
+
   void MarkConfirmed(const Recognition& rec) override {
     std::lock_guard<std::mutex> lk(mu_);
     for (auto& it : items_) {
@@ -111,6 +121,38 @@ class SQLiteStore : public RecognitionStore {
         " FROM recognition_logs WHERE sync_status=0 ORDER BY created_at ASC LIMIT ?;";
     if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
       LOG_ERROR("sqlite prepare pending failed: %s", sqlite3_errmsg(db_));
+      return out;
+    }
+    sqlite3_bind_int(st, 1, limit);
+    while (sqlite3_step(st) == SQLITE_ROW) {
+      StoredRecognition sr;
+      sr.rec.track_id = reinterpret_cast<const char*>(sqlite3_column_text(st, 0));
+      sr.rec.customer_id = sqlite3_column_int64(st, 1);
+      sr.rec.person_type = static_cast<PersonType>(sqlite3_column_int(st, 2));
+      sr.rec.similarity = static_cast<float>(sqlite3_column_double(st, 3));
+      sr.rec.direction = sqlite3_column_int(st, 4);
+      sr.rec.camera_id = reinterpret_cast<const char*>(sqlite3_column_text(st, 5));
+      sr.rec.created_at = sqlite3_column_int64(st, 6);
+      sr.rec.snapshot_b64 = reinterpret_cast<const char*>(sqlite3_column_text(st, 7));
+      sr.rec.snapshot_mime = reinterpret_cast<const char*>(sqlite3_column_text(st, 8));
+      sr.sync_status = 0;
+      out.push_back(std::move(sr));
+    }
+    sqlite3_finalize(st);
+    return out;
+  }
+
+  std::vector<StoredRecognition> Recent(int limit) override {
+    std::lock_guard<std::mutex> lk(mu_);
+    std::vector<StoredRecognition> out;
+    if (!db_) return out;
+    sqlite3_stmt* st = nullptr;
+    const char* sql =
+        "SELECT track_id, customer_id, person_type, similarity, direction, camera_id, created_at,"
+        " snapshot_b64, snapshot_mime"
+        " FROM recognition_logs ORDER BY created_at DESC, id DESC LIMIT ?;";
+    if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+      LOG_ERROR("sqlite prepare recent failed: %s", sqlite3_errmsg(db_));
       return out;
     }
     sqlite3_bind_int(st, 1, limit);

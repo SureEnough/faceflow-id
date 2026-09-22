@@ -7,6 +7,7 @@
 
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <map>
 #include <thread>
@@ -14,6 +15,7 @@
 #include "common/base64.h"
 #include "common/common.h"
 #include "config/mini_json.h"
+#include "store/recognition_store.h"
 
 namespace eb {
 namespace web {
@@ -124,6 +126,41 @@ bool WebServer::Start(int port, const std::string& username, const std::string& 
       }
       OkResp(res, "{}");
       LOG_INFO("web config updated");
+    });
+
+    svr->Get("/api/snapshots", [&](const httplib::Request& req, httplib::Response& res) {
+      if (!guard(req, res)) return;
+      if (!store_) {
+        OkResp(res, "[]");
+        return;
+      }
+      int limit = 10;
+      if (req.has_param("limit")) {
+        int v = std::atoi(req.get_param_value("limit").c_str());
+        if (v > 0 && v <= 50) limit = v;
+      }
+      auto recs = store_->Recent(limit);
+      std::vector<Json> arr;
+      arr.reserve(recs.size());
+      for (const auto& it : recs) {
+        std::map<std::string, Json> o;
+        o["track_id"] = Json::String(it.rec.track_id);
+        o["camera_id"] = Json::String(it.rec.camera_id);
+        o["created_at"] = Json::Number(static_cast<double>(it.rec.created_at));
+        if (it.rec.customer_id >= 0) {
+          o["customer_id"] = Json::Number(static_cast<double>(it.rec.customer_id));
+        } else {
+          o["customer_id"] = Json::Null();
+        }
+        o["person_type"] = Json::Number(static_cast<double>(it.rec.person_type));
+        o["similarity"] = Json::Number(static_cast<double>(it.rec.similarity));
+        o["direction"] = Json::Number(static_cast<double>(it.rec.direction));
+        o["snapshot_mime"] = Json::String(it.rec.snapshot_mime);
+        o["snapshot"] = Json::String(it.rec.snapshot_b64);  // base64 图片
+        arr.push_back(Json::Object(std::move(o)));
+      }
+      OkResp(res, Json::Array(std::move(arr)).Dump());
+      LOG_INFO("web snapshots: limit=%d hits=%zu", limit, recs.size());
     });
 
     svr->Post("/api/reload", [&](const httplib::Request& req, httplib::Response& res) {

@@ -138,7 +138,7 @@ int main(int argc, char** argv) {
   // Web 配置界面（后台线程）
   std::unique_ptr<eb::web::WebServer> web;
   if (cfg.web_enabled && !cfg.web_password.empty()) {
-    web = std::make_unique<eb::web::WebServer>(&cm, &board);
+    web = std::make_unique<eb::web::WebServer>(&cm, &board, store.get());
     if (web->Start(cfg.web_port, cfg.web_username, cfg.web_password, cfg.web_static_dir,
                    g_web_stop)) {
       LOG_INFO("web UI started: http://0.0.0.0:%d (login %s)", cfg.web_port,
