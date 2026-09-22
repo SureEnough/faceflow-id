@@ -87,17 +87,20 @@ npm install                                   # 国内源：npm config set regis
 npm run dev                                   # http://localhost:5173，admin/admin123 登录
 ```
 
-### 边缘盒（C++，无摄像头/无模型时自动回退 Mock）
+### 边缘盒（C++，Mock 与真实推理）
 
 ```bash
 cd edge-box
 cmake -B build && cmake --build build
 cp config/edge_box.json.example edge_box.json # 改 report_endpoint 指向后台（如 http://127.0.0.1:8080/api/v1）
-./build/edge_box                             # 每路相机一个线程；Web 配置界面 :8180（默认）
+./build/edge_box                             # 默认 Mock 推理；Web 配置界面 :8180（默认）
 ```
 
-- 真实推理需 ONNXRuntime + SCRFD/ArcFace 模型；未安装时走 Mock 后端（只验证流水线）。
-- 运行期参数（阈值/摄像头/虚拟线）可改 `edge_box.json` 或在 Web 界面在线编辑，热重载。
+- **Mock / 真实推理如何决定**：
+  - 编译期：CMake 探测到缺少 OpenCV / ONNXRuntime 依赖时，自动启用 Mock 视频源与 Mock 推理（`EDGE_BOX_MOCK_VIDEO`），用于开发/CI 验证流水线；
+  - 运行期：默认 `-backend mock`；指定 `-backend onnx` 才是真实推理，onnx 后端不可用时（未编译 ORT 或模型不可用）会回退 Mock 并打日志。
+  - 真机部署：安装 OpenCV + ONNXRuntime 并放置 SCRFD/ArcFace 模型后，以 `-backend onnx` 启动即走真实摄像头与推理。
+- 摄像头/虚拟线/阈值为运行参数：改 `edge_box.json` 或在 Web 界面在线编辑，热重载。
 
 ### 录入端（C++ Qt / 纯逻辑）
 
