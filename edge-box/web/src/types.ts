@@ -17,15 +17,21 @@ export interface CameraCfg {
 
 export interface EdgeBoxConfig {
   device_id: number
+  device_name: string
   report_endpoint: string
   report_interval_s: number
+  heartbeat_interval_s: number
+  config_poll_s: number
   retention_days: number
   det_thresh: number
   recog_thresh: number
   verify_thresh: number
   liveness_enabled: boolean
   staff_enabled: boolean
+  store_id: number
+  max_frames: number
   device_psk?: string
+  web_enabled: boolean
   web_port: number
   web_username: string
   web_password?: string

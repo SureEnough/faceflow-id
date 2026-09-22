@@ -92,15 +92,16 @@ npm run dev                                   # http://localhost:5173，admin/ad
 ```bash
 cd edge-box
 cmake -B build && cmake --build build
-cp config/edge_box.json.example edge_box.json # 改 report_endpoint 指向后台（如 http://127.0.0.1:8080/api/v1）
-./build/edge_box                             # 默认 Mock 推理；Web 配置界面 :8180（默认）
+# 首次用最小配置启动（可先复制 config/edge_box.json.example）：
+# 部署参数（后台地址/PSK/阈值/Web 账号等）随后都在 Web 界面维护，无需手改 JSON。
+./build/edge_box -c edge_box.json            # 默认 Mock 推理；Web 配置界面 :8180（默认）
 ```
 
 - **Mock / 真实推理如何决定**：
   - 编译期：CMake 探测到缺少 OpenCV / ONNXRuntime 依赖时，自动启用 Mock 视频源与 Mock 推理（`EDGE_BOX_MOCK_VIDEO`），用于开发/CI 验证流水线；
   - 运行期：默认 `-backend mock`；指定 `-backend onnx` 才是真实推理，onnx 后端不可用时（未编译 ORT 或模型不可用）会回退 Mock 并打日志。
   - 真机部署：安装 OpenCV + ONNXRuntime 并放置 SCRFD/ArcFace 模型后，以 `-backend onnx` 启动即走真实摄像头与推理。
-- 摄像头/虚拟线/阈值为运行参数：改 `edge_box.json` 或在 Web 界面在线编辑，热重载。
+- 摄像头/虚拟线/阈值/上报端点/PSK 等均为运行参数：在 Web 界面（摄像头管理 / 系统配置）在线编辑，保存即热重载，无需手改 JSON。
 
 ### 录入端（C++ Qt / 纯逻辑）
 

@@ -64,10 +64,12 @@ cd e2e && npm install && npm run e2e:install && npm run e2e:edge
 ## 运行
 
 ```bash
-cp config/edge_box.json.example edge_box.json   # 按门店改摄像头/虚拟线
+# 首次用最小配置启动（可先复制 config/edge_box.json.example）：
 ./build/edge_box -c edge_box.json -backend mock
 # 有模型时：
 ./build/edge_box -c edge_box.json -backend onnx
+# 部署参数（后台地址/PSK/阈值/摄像头/Web 账号）随后在 Web 界面“系统配置/摄像头管理”维护，
+# 保存即热重载，无需手改 JSON。
 ```
 
 ## Web 配置界面
