@@ -55,6 +55,65 @@ cd edge-box && cmake -B build && cmake --build build && ctest --test-dir build  
 cd enrollment-pc && cmake -B build && cmake --build build && ctest --test-dir build  # 录入端纯逻辑自测（无需 Qt）
 ```
 
+## 开发运行（分端详解）
+
+> 本地演示只需「快速开始」一节；本节给三端各自的构建/运行/关键配置。
+
+### 后端（Go，端口 :8080）
+
+```bash
+cd admin-backend
+export GOPROXY=https://goproxy.cn,direct          # 国内源（可选）
+go build -o bin/server ./cmd/server
+
+# 关键环境变量（均有默认值；完整表格见 admin-backend/README.md）
+export DEVICE_PSK="dev-psk-change-me"             # 设备注册/登录预共享密钥（两端需一致）
+export JWT_SECRET="dev-jwt-secret-change-me"      # JWT 签名密钥（上线必改）
+export TOKEN_TTL_USER_SECONDS=43200               # 用户令牌有效期秒（默认 12h）
+export TOKEN_TTL_DEVICE_SECONDS=86400             # 设备令牌有效期秒（默认 24h）
+./bin/server
+```
+
+- 首次启动自动迁移数据表并创建管理员（`ADMIN_USER`/`ADMIN_PASSWORD`，默认 admin/admin123）。
+- **令牌机制**：登录/注册即签发 JWT（HS256 + jti），后台「令牌管理」页可查看、吊销；
+  吊销后该令牌立即失效（中间件查台账拒绝）。升级到含令牌管理版本后，存量 token 需重新登录，
+  边缘盒/录入端均会自动重登，无需人工干预。
+
+### 前端（Vite，端口 :5173）
+
+```bash
+cd admin-backend/web
+npm install                                   # 国内源：npm config set registry https://registry.npmmirror.com
+npm run dev                                   # http://localhost:5173，admin/admin123 登录
+```
+
+### 边缘盒（C++，无摄像头/无模型时自动回退 Mock）
+
+```bash
+cd edge-box
+cmake -B build && cmake --build build
+cp config/edge_box.json.example edge_box.json # 改 report_endpoint 指向后台（如 http://127.0.0.1:8080/api/v1）
+./build/edge_box                             # 每路相机一个线程；Web 配置界面 :8180（默认）
+```
+
+- 真实推理需 ONNXRuntime + SCRFD/ArcFace 模型；未安装时走 Mock 后端（只验证流水线）。
+- 运行期参数（阈值/摄像头/虚拟线）可改 `edge_box.json` 或在 Web 界面在线编辑，热重载。
+
+### 录入端（C++ Qt / 纯逻辑）
+
+```bash
+cd enrollment-pc
+cmake -B build && cmake --build build        # 无 Qt 时仅构建纯逻辑自测
+ctest --test-dir build                       # logic + feature 全绿
+```
+
+Qt 应用需 Qt6（Widgets/Network/Multimedia）编译；运行前配置设备身份（不再硬编码）：
+
+```bash
+export ENROLL_API_URL="http://127.0.0.1:8080/api/v1"   # 后台地址
+export ENROLL_PSK="dev-psk-change-me"                   # 与后台 DEVICE_PSK 一致
+```
+
 ## 核心能力与设计要点
 
 - **历史来访回查**（需求核心）：边缘盒保存匿名轨迹（特征+抓拍+时间）→ 顾客录入时后台 1:N 特征检索 → 聚合次数/天数/首次/最近来访（仅顾客，内部人员排除）
@@ -72,6 +131,28 @@ cd enrollment-pc && cmake -B build && cmake --build build && ctest --test-dir bu
 | Node | ≥ 18，npm（国内源：`npm config set registry https://registry.npmmirror.com`） |
 | C++（边缘盒） | CMake ≥ 3.16，可选 OpenCV 4 / ONNXRuntime / SQLite3 / cpp-httplib（third_party 已带） |
 | C++（录入端） | Qt 6（Widgets/Network/Multimedia），读卡器厂商 SDK（可选） |
+
+## 生产部署
+
+> 完整预案见 [`docs/deployment.md`](docs/deployment.md)（MySQL/HTTPS/systemd/对象存储/上线清单）；
+> 上线前必做的人脸阈值标定见 [`docs/calibration.md`](docs/calibration.md)。
+
+**推荐拓扑（局域网门店）**：边缘盒 + 录入电脑在内网，后台单机部署（Nginx TLS → Go → MySQL）。
+
+| 步骤 | 说明 |
+|---|---|
+| 1. 准备 | 域名/证书；`openssl rand -base64 48` 生成 JWT_SECRET；`openssl rand -hex 32` 生成 AES_KEY |
+| 2. 数据库 | 建 MySQL 库（utf8mb4），`DB_DSN="mysql:user:pass@tcp(...)/faceflow?charset=utf8mb4"` 启动自动迁移 |
+| 3. 启动 | systemd 托管（模板见 deployment.md §5），环境变量写入 `/etc/faceflow/admin.env` |
+| 4. 前端 | `cd admin-backend/web && npm run build`，产物给 Nginx（SPA + 反代 /api/，见 deployment.md §4） |
+| 5. 门店 | 边缘盒/录入端 systemd 托管；摄像头/虚拟线/阈值在 Web 界面或 `edge_box.json` 配置 |
+| 6. 标定 | 按 calibration.md 用 30~50 人样本测定 `det/recog/verify` 阈值并下发 |
+| 7. 上线检查 | 按 deployment.md §6 清单逐项核对（健康检查/设备登录/上报入库/回查/HTTPS/备份） |
+
+- **快照存储**：局域网单机部署用默认 Local（`OBJECT_ROOT` 本地目录），**无需 MinIO/OBS**；
+  多节点共享/海量场景再按 deployment.md §3 接对象存储。
+- **安全底线**：`JWT_SECRET`、`AES_KEY`、`DEVICE_PSK`、`ADMIN_PASSWORD` 上线必须改；
+  `AES_KEY` 只存在于环境变量，不得落入代码或数据库。
 
 ## 实现状态（Roadmap）
 
@@ -97,5 +178,7 @@ cd enrollment-pc && cmake -B build && cmake --build build && ctest --test-dir bu
 ## 参考
 
 - 架构设计文档：`docs/architecture_design.md`
+- 生产部署预案：`docs/deployment.md`
+- 人脸阈值现场标定：`docs/calibration.md`
 - InsightFace：https://github.com/deepinsight/insightface
 - Ant Design 6：https://ant.design
