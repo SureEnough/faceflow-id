@@ -21,8 +21,10 @@ class PreviewStore {
   // 帧会被降采样到宽 <= kMaxPreviewWidth，控制编码成本与传输体积。
   bool Capture(const std::string& camera_id, const ImageFrame& frame);
 
-  // 读取最近一帧编码；无帧/编码失败返回 false
-  bool Get(const std::string& camera_id, std::string& mime, std::string& b64) const;
+  // 读取最近一帧编码；无帧/编码失败返回 false。
+  // width/height 为该帧的原始分辨率（未降采样），供前端把画面坐标映射回原始坐标。
+  bool Get(const std::string& camera_id, std::string& mime, std::string& b64,
+           int& width, int& height) const;
   bool Has(const std::string& camera_id) const;
 
   // 节流与尺寸
@@ -33,6 +35,8 @@ class PreviewStore {
   struct Item {
     std::string mime;
     std::string b64;
+    int src_width = 0;   // 原始帧宽（未降采样）
+    int src_height = 0;  // 原始帧高
     int64_t updated_ms = 0;  // steady_clock 毫秒
   };
 

@@ -54,9 +54,12 @@ export const fetchSnapshots = (limit = 20) =>
   unwrap<Snapshot[]>(api.get('/snapshots', { params: { limit } }))
 
 // 画面预览快照：返回 {mime, b64}（如 image/jpeg / image/bmp）
+// width/height 为原始视频分辨率（预览图已降采样，用于坐标映射）
 export interface PreviewFrame {
   mime: string
   b64: string
+  width: number
+  height: number
 }
 export const fetchPreview = (cameraId: string) =>
   unwrap<PreviewFrame>(api.get('/preview', { params: { camera_id: cameraId } }))

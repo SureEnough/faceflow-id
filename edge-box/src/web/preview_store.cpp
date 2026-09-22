@@ -58,16 +58,19 @@ bool PreviewStore::Capture(const std::string& camera_id, const ImageFrame& frame
   if (!EncodeSnapshotBase64(small, b64, mime) || b64.empty()) {
     return false;
   }
-  items_[camera_id] = Item{mime, b64, now};
+  items_[camera_id] = Item{mime, b64, frame.width, frame.height, now};
   return true;
 }
 
-bool PreviewStore::Get(const std::string& camera_id, std::string& mime, std::string& b64) const {
+bool PreviewStore::Get(const std::string& camera_id, std::string& mime, std::string& b64,
+                       int& width, int& height) const {
   std::lock_guard<std::mutex> lk(mu_);
   auto it = items_.find(camera_id);
   if (it == items_.end()) return false;
   mime = it->second.mime;
   b64 = it->second.b64;
+  width = it->second.src_width;
+  height = it->second.src_height;
   return true;
 }
 

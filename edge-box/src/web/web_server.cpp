@@ -171,12 +171,14 @@ bool WebServer::Start(int port, const std::string& username, const std::string& 
         return;
       }
       std::string mime, b64;
-      if (!preview_->Get(req.get_param_value("camera_id"), mime, b64)) {
+      int srcW = 0, srcH = 0;
+      if (!preview_->Get(req.get_param_value("camera_id"), mime, b64, srcW, srcH)) {
         FailResp(res, 404, "no preview frame for camera");
         return;
       }
-      // mime 固定值 + base64 为 URL 安全字符，无需 JSON 转义
-      OkResp(res, "{\"mime\":\"" + mime + "\",\"b64\":\"" + b64 + "\"}");
+      // mime 固定值 + base64 为 URL 安全字符，无需 JSON 转义；width/height 为原始分辨率
+      OkResp(res, "{\"mime\":\"" + mime + "\",\"b64\":\"" + b64 +
+                  "\",\"width\":" + std::to_string(srcW) + ",\"height\":" + std::to_string(srcH) + "}");
     });
 
     svr->Post("/api/reload", [&](const httplib::Request& req, httplib::Response& res) {

@@ -258,8 +258,10 @@ int main() {
     CHECK(res1 && res1->status == 200, "preview with frame -> 200");
     if (res1 && res1->status == 200) {
       CHECK(res1->body.find("\"b64\"") != std::string::npos &&
-            res1->body.find("\"mime\"") != std::string::npos,
-            "preview fields present");
+            res1->body.find("\"mime\"") != std::string::npos &&
+            res1->body.find("\"width\"") != std::string::npos &&
+            res1->body.find("\"height\"") != std::string::npos,
+            "preview fields present (b64/mime/width/height)");
       CHECK(res1->body.size() > 64, "preview payload non-trivial");
     }
     auto res2 = cli3.Get("/api/preview?camera_id=unknown", auth3);
