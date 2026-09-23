@@ -83,3 +83,43 @@ export interface StaffRow {
   out: number
   last_in: string
 }
+/** 门店 */
+export interface Store {
+  id: number
+  name: string
+  address?: string
+  status: number
+  created_at: number
+  updated_at: number
+}
+
+/** 识别记录（查询） */
+export interface RecognitionRecord {
+  id: number
+  device_id: number
+  track_id: string
+  customer_id?: number
+  customer_name?: string
+  person_type: number
+  similarity: number
+  direction: number
+  camera_id?: string
+  created_at: string
+  snapshot?: string
+  snapshot_url?: string
+  snapshot_mime?: string
+}
+
+/** 人证核验记录（查询） */
+export interface VerifyRecord {
+  id: number
+  customer_id: number
+  verify_result: number
+  similarity: number
+  liveness_score: number
+  device_id: number
+  operator?: string
+  created_at: string
+  live_photo?: string
+  live_photo_url?: string
+}

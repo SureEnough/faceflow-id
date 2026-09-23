@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Alert, Button, Card, DatePicker, Descriptions, Input, Select, Space, Table, Tag, Typography, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import type { Dayjs } from 'dayjs'
-import { fetchDeviceTree, historySearch } from '../api'
+import { fetchStores, historySearch } from '../api'
 import { errMsg } from '../api/client'
 import { randomFeatureBase64 } from '../api/feature'
 import type { MatchRecord } from '../api/types'
@@ -36,13 +36,10 @@ export default function HistorySearch() {
   } | null>(null)
   const [error, setError] = useState('')
 
-  // 门店列表：从设备树提取 store_id 去重（后端门店管理待补）
+  // 门店列表：来自门店管理
   useEffect(() => {
-    fetchDeviceTree()
-      .then((items) => {
-        const ids = Array.from(new Set(items.map((i) => i.store_id))).sort((a, b) => a - b)
-        setStores(ids.map((id) => ({ value: id, label: `门店 #${id}` })))
-      })
+    fetchStores()
+      .then((r) => setStores(r.items.filter((i) => i.status === 1).map((i) => ({ value: i.id, label: i.name }))))
       .catch(() => setStores([]))
   }, [])
 

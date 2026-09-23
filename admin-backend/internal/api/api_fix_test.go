@@ -339,3 +339,92 @@ func TestUpdateCustomerFields(t *testing.T) {
 		t.Fatalf("updated fields mismatch: %+v", item)
 	}
 }
+
+// TestStoresAndRecordQuery 回归：门店 CRUD + 识别记录查询
+func TestStoresAndRecordQuery(t *testing.T) {
+	ts, close := newTestServer(t)
+	defer close()
+	base := ts.URL + "/api/v1"
+	token := login(t, base, "admin", "admin123")
+
+	// 1. 门店 CRUD
+	out, status := doJSON(t, http.MethodPost, base+"/stores", map[string]any{"name": "望京店", "address": "xx 路 1 号"}, token)
+	if status != 200 || out.Code != 0 {
+		t.Fatalf("create store: %d %s", out.Code, out.Message)
+	}
+	var st struct{ StoreID uint64 `json:"store_id"` }
+	_ = json.Unmarshal(out.Data, &st)
+	if st.StoreID == 0 {
+		t.Fatal("store id missing")
+	}
+	_, status = doJSON(t, http.MethodPut, fmt.Sprintf("%s/stores/%d", base, st.StoreID),
+		map[string]any{"name": "望京店2", "address": "xx 路 2 号"}, token)
+	if status != 200 {
+		t.Fatalf("update store: %d", status)
+	}
+	out, status = doJSON(t, http.MethodGet, base+"/stores", nil, token)
+	if status != 200 {
+		t.Fatalf("list stores: %d", status)
+	}
+	var list struct {
+		Items []map[string]interface{} `json:"items"`
+	}
+	_ = json.Unmarshal(out.Data, &list)
+	if len(list.Items) != 1 || list.Items[0]["name"] != "望京店2" {
+		t.Fatalf("store list mismatch: %+v", list.Items)
+	}
+
+	// 2. 门店下有设备时删除被拒绝
+	edgeID, _ := regEdge(t, base, "边缘盒-门店", st.StoreID)
+	_, status = doJSON(t, http.MethodDelete, fmt.Sprintf("%s/stores/%d", base, st.StoreID), nil, token)
+	if status != 400 {
+		t.Fatalf("delete store with devices should 400, got %d", status)
+	}
+
+	// 3. 识别记录查询（含快照字段）
+	feat := featureBase64()
+	snap := base64.StdEncoding.EncodeToString([]byte("fake-jpeg"))
+	_, status = doJSON(t, http.MethodPost, base+"/records/recognition/batch", map[string]any{
+		"device_id": edgeID,
+		"records": []map[string]any{
+			{"track_id": "T-R1", "person_type": 0, "face_feature": feat, "direction": 0,
+				"camera_id": "cam-9", "snapshot": snap, "snapshot_mime": "image/jpeg",
+				"created_at": "2026-09-18T10:00:00Z"},
+		},
+	}, token)
+	if status != 200 {
+		t.Fatalf("batch: %d", status)
+	}
+	out, status = doJSON(t, http.MethodGet, base+"/records/recognition?device_id="+fmt.Sprint(edgeID), nil, token)
+	if status != 200 || out.Code != 0 {
+		t.Fatalf("query records: %d %s", out.Code, out.Message)
+	}
+	var q struct {
+		Total int64                    `json:"total"`
+		Items []map[string]interface{} `json:"items"`
+	}
+	_ = json.Unmarshal(out.Data, &q)
+	if q.Total != 1 || q.Items[0]["snapshot"] != snap {
+		t.Fatalf("record query mismatch: total=%d items=%+v", q.Total, q.Items)
+	}
+
+	// 4. viewer 可读记录但设备 token 被拒
+	adminToken := login(t, base, "admin", "admin123")
+	_ = adminToken
+	if _, status := doJSON(t, http.MethodPost, base+"/users", map[string]any{
+		"username": "viewer-rec", "password": "viewer123", "role": 2, "status": 1,
+	}, token); status != 200 {
+		t.Fatalf("create viewer: %d", status)
+	}
+	viewerToken := login(t, base, "viewer-rec", "viewer123")
+	if _, status := doJSON(t, http.MethodGet, base+"/records/recognition", nil, viewerToken); status != 200 {
+		t.Fatalf("viewer read records should 200, got %d", status)
+	}
+	devToken := "unused"
+	_ = devToken
+	// 设备 token 查询记录应 403：先取设备 token（regEdge 返回 token）
+	_, devTok := regEdge(t, base, "边缘盒-不可查", 1)
+	if _, status := doJSON(t, http.MethodGet, base+"/records/recognition", nil, devTok); status != http.StatusForbidden {
+		t.Fatalf("device token query records should 403, got %d", status)
+	}
+}

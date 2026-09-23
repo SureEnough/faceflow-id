@@ -52,6 +52,16 @@ func (s *Server) Router() *gin.Engine {
 			authed.POST("/records/recognition/batch", s.batchRecognition)
 			authed.POST("/records/verify", s.createVerify)
 			authed.POST("/history/search", s.historySearch)
+			// 记录查询：只读（viewer 及以上；设备 token 拒绝）
+			authed.GET("/records/recognition", requireRole("admin", "operator", "viewer"), s.listRecognitionRecords)
+			authed.GET("/records/verify", requireRole("admin", "operator", "viewer"), s.listVerifyRecords)
+
+			// 门店：读任意用户 token；写 admin/operator；删 admin
+			authed.GET("/stores", s.listStores)
+			authed.POST("/stores", requireRole("admin", "operator"), s.createStore)
+			authed.PUT("/stores/:id", requireRole("admin", "operator"), s.updateStore)
+			authed.DELETE("/stores/:id", requireRole("admin"), s.deleteStore)
+
 			authed.GET("/stats/flow", s.statsFlow)
 			authed.GET("/stats/staff", s.statsStaff)
 			authed.GET("/stats/visits/:customer_id", s.statsVisits)

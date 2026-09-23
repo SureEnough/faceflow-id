@@ -5,7 +5,10 @@ import type {
   FlowRow,
   MatchRecord,
   PageResult,
+  RecognitionRecord,
   StaffRow,
+  Store,
+  VerifyRecord,
   VisitStats,
 } from './types'
 
@@ -71,3 +74,16 @@ export const fetchStaffStats = (params: { start_at: string; end_at?: string }) =
   get<{ items: StaffRow[] }>('/stats/staff', params)
 
 export const fetchVisitStats = (customerId: number) => get<VisitStats>(`/stats/visits/${customerId}`)
+// ---- 门店 ----
+export const fetchStores = () => get<{ items: Store[] }>('/stores')
+export const createStore = (body: { name: string; address?: string }) =>
+  post<{ store_id: number }>('/stores', body)
+export const updateStore = (id: number, body: { name: string; address?: string; status?: number }) =>
+  put<{ store_id: number }>(`/stores/${id}`, body)
+export const deleteStore = (id: number) => del<{ store_id: number }>(`/stores/${id}`)
+
+// ---- 记录查询 ----
+export const fetchRecognitionRecords = (params: Record<string, unknown>) =>
+  get<PageResult<RecognitionRecord>>('/records/recognition', params)
+export const fetchVerifyRecords = (params: Record<string, unknown>) =>
+  get<PageResult<VerifyRecord>>('/records/verify', params)

@@ -6,6 +6,8 @@ import {
   TeamOutlined,
   BarChartOutlined,
   SearchOutlined,
+  ShopOutlined,
+  DatabaseOutlined,
 } from '@ant-design/icons'
 import { LogoutOutlined, FileSearchOutlined, SafetyOutlined } from '@ant-design/icons'
 import { clearToken } from '../api/client'
@@ -19,6 +21,8 @@ const MENU = [
   { key: '/stats', icon: <BarChartOutlined />, label: '客流统计' },
   { key: '/staff', icon: <TeamOutlined />, label: '员工通行' },
   { key: '/history', icon: <SearchOutlined />, label: '历史来访回查' },
+  { key: '/stores', icon: <ShopOutlined />, label: '门店管理', roles: ['admin', 'operator'] },
+  { key: '/records', icon: <DatabaseOutlined />, label: '记录查询' },
   { key: '/tokens', icon: <SafetyOutlined />, label: '令牌管理', roles: ['admin', 'operator'] },
   { key: '/users', icon: <TeamOutlined />, label: '用户管理', roles: ['admin'] },
   { key: '/audit-logs', icon: <FileSearchOutlined />, label: '审计日志', roles: ['admin'] },
