@@ -42,6 +42,20 @@ DB_DSN="sqlite:./data/admin.db" DEVICE_PSK="dev-psk-change-me" ./bin/server
 
 默认监听 `:8080`，健康检查：`GET /api/v1/health`。
 
+> **不想打包？直接运行（推荐开发用）**
+>
+> ```bash
+> go run ./cmd/server
+> ```
+>
+> **Windows 提示**
+> - 直接 `go run ./cmd/server` 即可，无需生成二进制；
+> - 若确实要打包：请用 `go build -o bin/server.exe ./cmd/server`（**显式带 `.exe`**）。
+>   直接写 `-o bin/server` 时 Go 生成的无扩展名文件会被 Windows 当作未知文件，运行会弹“选择打开方式”；
+> - 8080 被旧进程占用时：`taskkill /IM server.exe /F` 后重试，或用
+>   `netstat -ano | findstr :8080` 查 PID 后 `taskkill /F /PID <pid>`；
+> - 确认 `go env GOOS` 为 `windows`（若被误设成 `linux` 会生成无法运行的文件）。
+
 ## 环境变量
 
 | 变量 | 默认 | 说明 |
