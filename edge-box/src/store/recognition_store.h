@@ -14,6 +14,18 @@ struct StoredRecognition {
   int sync_status = 0;  // 0 待上报 / 1 已上报
 };
 
+// 识别记录查询条件（Web 端"识别记录"筛选；空字段=不限制）
+struct RecognitionQuery {
+  int limit = 20;
+  std::string camera_id;  // 相机 ID，空=全部
+  int identified = -1;    // -1 全部 / 1 仅命中档案 / 0 仅匿名
+  int person_type = -1;   // -1 全部 / 0 顾客 / 1 员工
+  int direction = -1;     // -1 全部 / 0 进 / 1 出
+  double min_similarity = 0;  // 相似度下限
+  int64_t start_at = 0;   // Unix 秒，0=不限
+  int64_t end_at = 0;     // Unix 秒，0=不限
+};
+
 class RecognitionStore {
  public:
   virtual ~RecognitionStore() = default;
@@ -24,8 +36,11 @@ class RecognitionStore {
   // 取出待上报记录并标记为已上报（上报成功后调用 MarkConfirmed）
   virtual std::vector<StoredRecognition> Pending(int limit) = 0;
 
-  // 取最近 N 条记录（按时间倒序；Web 端“最近抓拍”用）
+  // 取最近 N 条记录（按时间倒序；兼容旧接口）
   virtual std::vector<StoredRecognition> Recent(int limit) = 0;
+
+  // 按条件查询最近记录（Web 端"识别记录"用；按时间倒序，limit 上限）
+  virtual std::vector<StoredRecognition> RecentFiltered(const RecognitionQuery& q) = 0;
 
   // 将待上报记录标记成功（按 track_id + camera_id + created_at）
   virtual void MarkConfirmed(const Recognition& rec) = 0;

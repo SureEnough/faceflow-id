@@ -31,14 +31,14 @@ type PageKey = 'dashboard' | 'cameras' | 'snapshots' | 'config'
 const MENU_ITEMS: MenuProps['items'] = [
   { key: 'dashboard', icon: <DashboardOutlined />, label: '仪表盘' },
   { key: 'cameras', icon: <CameraOutlined />, label: '摄像头管理' },
-  { key: 'snapshots', icon: <HistoryOutlined />, label: '最近抓拍记录' },
+  { key: 'snapshots', icon: <HistoryOutlined />, label: '识别记录' },
   { key: 'config', icon: <SettingOutlined />, label: '系统配置' },
 ]
 
 const PAGE_TITLE: Record<PageKey, string> = {
   dashboard: '仪表盘',
   cameras: '摄像头管理',
-  snapshots: '最近抓拍记录',
+  snapshots: '识别记录',
   config: '系统配置',
 }
 

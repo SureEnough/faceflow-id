@@ -7,6 +7,25 @@
 
 namespace eb {
 
+namespace {
+
+// 记录是否匹配查询条件（MemStore 过滤用）
+bool MatchQuery(const Recognition& rec, const RecognitionQuery& q) {
+  if (!q.camera_id.empty() && rec.camera_id != q.camera_id) return false;
+  if (q.identified >= 0) {
+    const bool identified = rec.customer_id >= 0;
+    if (identified != (q.identified == 1)) return false;
+  }
+  if (q.person_type >= 0 && rec.person_type != q.person_type) return false;
+  if (q.direction >= 0 && rec.direction != q.direction) return false;
+  if (q.min_similarity > 0 && rec.similarity < q.min_similarity) return false;
+  if (q.start_at > 0 && rec.created_at < q.start_at) return false;
+  if (q.end_at > 0 && rec.created_at > q.end_at) return false;
+  return true;
+}
+
+}  // namespace
+
 // 内存实现（无 SQLite 依赖：开发自测/CI）
 class MemStore : public RecognitionStore {
  public:
@@ -33,6 +52,16 @@ class MemStore : public RecognitionStore {
     std::vector<StoredRecognition> out;
     // deque 尾部最新；倒序取 limit 条
     for (auto it = items_.rbegin(); it != items_.rend() && static_cast<int>(out.size()) < limit; ++it) {
+      out.push_back(*it);
+    }
+    return out;
+  }
+
+  std::vector<StoredRecognition> RecentFiltered(const RecognitionQuery& q) override {
+    std::lock_guard<std::mutex> lk(mu_);
+    std::vector<StoredRecognition> out;
+    for (auto it = items_.rbegin(); it != items_.rend() && static_cast<int>(out.size()) < q.limit; ++it) {
+      if (!MatchQuery(it->rec, q)) continue;
       out.push_back(*it);
     }
     return out;
@@ -156,6 +185,53 @@ class SQLiteStore : public RecognitionStore {
       return out;
     }
     sqlite3_bind_int(st, 1, limit);
+    while (sqlite3_step(st) == SQLITE_ROW) {
+      StoredRecognition sr;
+      sr.rec.track_id = reinterpret_cast<const char*>(sqlite3_column_text(st, 0));
+      sr.rec.customer_id = sqlite3_column_int64(st, 1);
+      sr.rec.person_type = static_cast<PersonType>(sqlite3_column_int(st, 2));
+      sr.rec.similarity = static_cast<float>(sqlite3_column_double(st, 3));
+      sr.rec.direction = sqlite3_column_int(st, 4);
+      sr.rec.camera_id = reinterpret_cast<const char*>(sqlite3_column_text(st, 5));
+      sr.rec.created_at = sqlite3_column_int64(st, 6);
+      sr.rec.snapshot_b64 = reinterpret_cast<const char*>(sqlite3_column_text(st, 7));
+      sr.rec.snapshot_mime = reinterpret_cast<const char*>(sqlite3_column_text(st, 8));
+      sr.sync_status = 0;
+      out.push_back(std::move(sr));
+    }
+    sqlite3_finalize(st);
+    return out;
+  }
+
+  std::vector<StoredRecognition> RecentFiltered(const RecognitionQuery& q) override {
+    std::lock_guard<std::mutex> lk(mu_);
+    std::vector<StoredRecognition> out;
+    if (!db_) return out;
+    std::string sql =
+        "SELECT track_id, customer_id, person_type, similarity, direction, camera_id, created_at,"
+        " snapshot_b64, snapshot_mime FROM recognition_logs WHERE 1=1";
+    if (!q.camera_id.empty()) sql += " AND camera_id=?";
+    if (q.identified >= 0) sql += (q.identified == 1) ? " AND customer_id>=0" : " AND customer_id<0";
+    if (q.person_type >= 0) sql += " AND person_type=?";
+    if (q.direction >= 0) sql += " AND direction=?";
+    if (q.min_similarity > 0) sql += " AND similarity>=?";
+    if (q.start_at > 0) sql += " AND created_at>=?";
+    if (q.end_at > 0) sql += " AND created_at<=?";
+    sql += " ORDER BY created_at DESC, id DESC LIMIT ?;";
+
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &st, nullptr) != SQLITE_OK) {
+      LOG_ERROR("sqlite prepare filtered failed: %s", sqlite3_errmsg(db_));
+      return out;
+    }
+    int idx = 1;
+    if (!q.camera_id.empty()) sqlite3_bind_text(st, idx++, q.camera_id.c_str(), -1, SQLITE_TRANSIENT);
+    if (q.person_type >= 0) sqlite3_bind_int(st, idx++, q.person_type);
+    if (q.direction >= 0) sqlite3_bind_int(st, idx++, q.direction);
+    if (q.min_similarity > 0) sqlite3_bind_double(st, idx++, q.min_similarity);
+    if (q.start_at > 0) sqlite3_bind_int64(st, idx++, q.start_at);
+    if (q.end_at > 0) sqlite3_bind_int64(st, idx++, q.end_at);
+    sqlite3_bind_int(st, idx, q.limit);
     while (sqlite3_step(st) == SQLITE_ROW) {
       StoredRecognition sr;
       sr.rec.track_id = reinterpret_cast<const char*>(sqlite3_column_text(st, 0));

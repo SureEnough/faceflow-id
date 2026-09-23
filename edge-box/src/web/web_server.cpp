@@ -135,12 +135,22 @@ bool WebServer::Start(int port, const std::string& username, const std::string& 
         OkResp(res, "[]");
         return;
       }
-      int limit = 10;
+      // 筛选参数（均为可选；空=不限制）
+      RecognitionQuery q;
       if (req.has_param("limit")) {
         int v = std::atoi(req.get_param_value("limit").c_str());
-        if (v > 0 && v <= 50) limit = v;
+        if (v > 0 && v <= 50) q.limit = v;
+      } else {
+        q.limit = 10;
       }
-      auto recs = store_->Recent(limit);
+      if (req.has_param("camera_id")) q.camera_id = req.get_param_value("camera_id");
+      if (req.has_param("identified")) q.identified = std::atoi(req.get_param_value("identified").c_str());
+      if (req.has_param("person_type")) q.person_type = std::atoi(req.get_param_value("person_type").c_str());
+      if (req.has_param("direction")) q.direction = std::atoi(req.get_param_value("direction").c_str());
+      if (req.has_param("min_similarity")) q.min_similarity = std::atof(req.get_param_value("min_similarity").c_str());
+      if (req.has_param("start_at")) q.start_at = std::atoll(req.get_param_value("start_at").c_str());
+      if (req.has_param("end_at")) q.end_at = std::atoll(req.get_param_value("end_at").c_str());
+      auto recs = store_->RecentFiltered(q);
       std::vector<Json> arr;
       arr.reserve(recs.size());
       for (const auto& it : recs) {
@@ -161,7 +171,7 @@ bool WebServer::Start(int port, const std::string& username, const std::string& 
         arr.push_back(Json::Object(std::move(o)));
       }
       OkResp(res, Json::Array(std::move(arr)).Dump());
-      LOG_INFO("web snapshots: limit=%d hits=%zu", limit, recs.size());
+      LOG_INFO("web snapshots: limit=%d hits=%zu", q.limit, recs.size());
     });
 
     svr->Get("/api/preview", [&](const httplib::Request& req, httplib::Response& res) {

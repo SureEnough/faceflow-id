@@ -50,8 +50,19 @@ export const fetchConfig = () => unwrap<EdgeBoxConfig>(api.get('/config'))
 export const saveConfig = (cfg: Partial<EdgeBoxConfig>) =>
   unwrap<Record<string, never>>(api.put('/config', cfg))
 export const triggerReload = () => unwrap<Record<string, never>>(api.post('/reload'))
-export const fetchSnapshots = (limit = 20) =>
-  unwrap<Snapshot[]>(api.get('/snapshots', { params: { limit } }))
+// 识别记录查询条件（空/undefined = 不限制）
+export interface SnapshotQuery {
+  limit?: number
+  camera_id?: string
+  identified?: number // 1 仅命中档案 / 0 仅匿名
+  person_type?: number
+  direction?: number
+  min_similarity?: number
+  start_at?: number // Unix 秒
+  end_at?: number // Unix 秒
+}
+export const fetchSnapshots = (q: SnapshotQuery = {}) =>
+  unwrap<Snapshot[]>(api.get('/snapshots', { params: { limit: q.limit ?? 20, ...q } }))
 
 // 画面预览快照：返回 {mime, b64}（如 image/jpeg / image/bmp）
 // width/height 为原始视频分辨率（预览图已降采样，用于坐标映射）
