@@ -4,6 +4,7 @@ import type { TreeDataNode } from 'antd'
 import { SettingOutlined, EditOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { fetchDeviceConfig, fetchDeviceTree, pushDeviceConfig, updateDevice } from '../api'
+import { canWrite } from '../utils/role'
 import { DEVICE_TYPE_TEXT, type Device } from '../api/types'
 
 function flatten(items: Device[], depth = 0): { id: number; key: string; device_type: number }[] {
@@ -32,6 +33,11 @@ function toTree(items: Device[]): TreeDataNode[] {
             最后在线 {dayjs.unix(d.last_seen_at).format('MM-DD HH:mm:ss')}
           </Typography.Text>
         )}
+        {(d.cpu || d.mem || d.fps) ? (
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            CPU {Math.round((d.cpu ?? 0))}% · 内存 {Math.round((d.mem ?? 0))}% · 磁盘 {Math.round((d.disk ?? 0))}% · {Math.round((d.fps ?? 0))} FPS
+          </Typography.Text>
+        ) : null}
       </Space>
     ),
     children: d.children?.length ? toTree(d.children) : undefined,
@@ -125,8 +131,8 @@ export default function Devices() {
       title="设备树（门店 → 主设备 → 子设备）"
       extra={
         <Space>
-          <Button icon={<EditOutlined />} onClick={() => setRenameOpen(true)}>编辑名称</Button>
-          <Button icon={<SettingOutlined />} onClick={() => setPushOpen(true)}>配置下发</Button>
+          {canWrite() && <Button icon={<EditOutlined />} onClick={() => setRenameOpen(true)}>编辑名称</Button>}
+          {canWrite() && <Button icon={<SettingOutlined />} onClick={() => setPushOpen(true)}>配置下发</Button>}
         </Space>
       }
     >

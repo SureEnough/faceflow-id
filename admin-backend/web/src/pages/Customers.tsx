@@ -8,6 +8,7 @@ import {
   appendCustomerFeature, createCustomer, deleteCustomer, fetchCustomers, fetchVisitStats, updateCustomer,
 } from '../api'
 import { downloadCsv, errMsg } from '../api/client'
+import { canWrite, isAdmin } from '../utils/role'
 import type { Customer, VisitStats } from '../api/types'
 
 const STATUS_TEXT: Record<number, string> = { 0: '正常', 1: '黑名单', 2: '注销', 3: '离职' }
@@ -152,14 +153,16 @@ export default function Customers() {
       render: (_, row) => (
         <Space size={4}>
           <Button size="small" onClick={() => openDetail(row)}>详情</Button>
-          <Button size="small" onClick={() => openEdit(row)}>编辑</Button>
-          <Button size="small" onClick={() => { setFeatTarget(row); setFeatOpen(true) }}>特征</Button>
-          <Popconfirm
-            title={row.person_type === 1 ? '标记该员工离职？' : '注销该顾客档案？'}
-            onConfirm={() => remove(row)}
-          >
-            <Button size="small" danger>{row.person_type === 1 ? '离职' : '注销'}</Button>
-          </Popconfirm>
+          {canWrite() && <Button size="small" onClick={() => openEdit(row)}>编辑</Button>}
+          {canWrite() && <Button size="small" onClick={() => { setFeatTarget(row); setFeatOpen(true) }}>特征</Button>}
+          {isAdmin() && (
+            <Popconfirm
+              title={row.person_type === 1 ? '标记该员工离职？' : '注销该顾客档案？'}
+              onConfirm={() => remove(row)}
+            >
+              <Button size="small" danger>{row.person_type === 1 ? '离职' : '注销'}</Button>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
@@ -193,7 +196,7 @@ export default function Customers() {
           >
             导出 CSV
           </Button>
-          <Button type="primary" onClick={() => setCreateOpen(true)}>新增人员</Button>
+          {canWrite() && <Button type="primary" onClick={() => setCreateOpen(true)}>新增人员</Button>}
         </Space>
       }
     >

@@ -538,3 +538,53 @@ func TestCSVExport(t *testing.T) {
 		t.Fatalf("device token export should 403, got %d", resp3.StatusCode)
 	}
 }
+
+// TestDeviceResourceMetrics 回归：设备上报资源指标并持久化展示
+func TestDeviceResourceMetrics(t *testing.T) {
+	ts, close := newTestServer(t)
+	defer close()
+	base := ts.URL + "/api/v1"
+	edgeID, token := regEdge(t, base, "边缘盒-资源", 1)
+
+	// 编辑设备接口（设备 token）携带资源指标
+	out, status := doJSON(t, http.MethodPut, fmt.Sprintf("%s/devices/%d", base, edgeID),
+		map[string]any{"status": 1, "cpu": 42.5, "mem": 61.2, "disk": 35.0, "fps": 27.0}, token)
+	if status != 200 || out.Code != 0 {
+		t.Fatalf("update with metrics: %d %s", out.Code, out.Message)
+	}
+
+	// 设备树返回资源字段
+	out, status = doJSON(t, http.MethodGet, base+"/devices", nil, token)
+	if status != 200 {
+		t.Fatalf("tree: %d", status)
+	}
+	var tree struct {
+		Items []map[string]interface{} `json:"items"`
+	}
+	_ = json.Unmarshal(out.Data, &tree)
+	if len(tree.Items) == 0 {
+		t.Fatal("no device")
+	}
+	it := tree.Items[0]
+	for _, k := range []string{"cpu", "mem", "disk", "fps"} {
+		if _, ok := it[k]; !ok {
+			t.Fatalf("metric %s missing: %+v", k, it)
+		}
+	}
+	if it["fps"].(float64) != 27.0 {
+		t.Fatalf("fps mismatch: %+v", it)
+	}
+
+	// 用户 token 编辑不覆盖资源（名字改动不影响已存指标）
+	adminToken := login(t, base, "admin", "admin123")
+	_, status = doJSON(t, http.MethodPut, fmt.Sprintf("%s/devices/%d", base, edgeID),
+		map[string]any{"name": "改名-资源"}, adminToken)
+	if status != 200 {
+		t.Fatalf("admin rename: %d", status)
+	}
+	out, _ = doJSON(t, http.MethodGet, base+"/devices", nil, token)
+	_ = json.Unmarshal(out.Data, &tree)
+	if tree.Items[0]["fps"].(float64) != 27.0 || tree.Items[0]["name"] != "改名-资源" {
+		t.Fatalf("metrics lost after rename: %+v", tree.Items[0])
+	}
+}

@@ -13,6 +13,10 @@ export interface Device {
   store_id: number
   status: 0 | 1
   last_seen_at: number
+  cpu?: number
+  mem?: number
+  disk?: number
+  fps?: number
   created_at: number
   children?: Device[]
 }

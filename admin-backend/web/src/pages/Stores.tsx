@@ -4,6 +4,7 @@ import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
 import { createStore, deleteStore, fetchStores, updateStore } from '../api'
 import { errMsg } from '../api/client'
+import { canWrite, isAdmin } from '../utils/role'
 import type { Store } from '../api/types'
 
 interface Row extends Store { key: number }
@@ -73,10 +74,12 @@ export default function Stores() {
       title: '操作', width: 150,
       render: (_, row) => (
         <Space size={4}>
-          <Button size="small" onClick={() => openEdit(row)}>编辑</Button>
-          <Popconfirm title="删除该门店？（有设备的门店不可删除）" onConfirm={() => remove(row)}>
-            <Button size="small" danger>删除</Button>
-          </Popconfirm>
+          {canWrite() && <Button size="small" onClick={() => openEdit(row)}>编辑</Button>}
+          {isAdmin() && (
+            <Popconfirm title="删除该门店？（有设备的门店不可删除）" onConfirm={() => remove(row)}>
+              <Button size="small" danger>删除</Button>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
@@ -85,7 +88,7 @@ export default function Stores() {
   return (
     <Card
       title="门店管理"
-      extra={<Button type="primary" onClick={openCreate}>新增门店</Button>}
+      extra={canWrite() && <Button type="primary" onClick={openCreate}>新增门店</Button>}
     >
       <Table rowKey="id" loading={loading} dataSource={data} columns={columns} pagination={false} />
 
