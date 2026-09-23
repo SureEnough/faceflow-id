@@ -7,31 +7,27 @@ import { fetchDeviceConfig, fetchDeviceTree, fetchStores, pushDeviceConfig, upda
 import { DEVICE_TYPE_TEXT, type Device } from '../api/types'
 import { canWrite } from '../utils/role'
 
-// 树形行：保留 children，antd Table 自动展开
 interface Row extends Device {
   key: number
-  children?: Row[]
+  parent_name: string // 绑定的父设备名（主设备为空）
+  is_primary: boolean
 }
 
-function toRows(items: Device[]): Row[] {
-  return items.map((d) => ({
-    ...d,
-    key: d.id,
-    children: d.children?.length ? toRows(d.children) : undefined,
-  }))
-}
-
-// 过滤后尽量保持父子关系：自身不匹配但子节点匹配时，子节点上提升为根
-function filterRows(items: Row[], pred: (d: Row) => boolean): Row[] {
+// 树展平为扁平行（携带父设备名）
+function flattenTree(items: Device[]): Row[] {
   const out: Row[] = []
-  for (const d of items) {
-    const children = d.children?.length ? filterRows(d.children, pred) : []
-    if (pred(d)) {
-      out.push({ ...d, children: children.length ? children : undefined })
-    } else if (children.length) {
-      out.push({ ...d, children })
+  const walk = (list: Device[], parent?: Device) => {
+    for (const d of list) {
+      out.push({
+        ...d,
+        key: d.id,
+        parent_name: parent ? `${parent.name} (#${parent.id})` : '',
+        is_primary: parent === undefined,
+      })
+      if (d.children?.length) walk(d.children, d)
     }
   }
+  walk(items)
   return out
 }
 
@@ -61,11 +57,7 @@ export default function Devices() {
   const load = () => {
     setLoading(true); setError('')
     fetchDeviceTree()
-      .then((items) => {
-        const r = toRows(items)
-        setAllRows(r)
-        setRows(r)
-      })
+      .then((items) => setAllRows(flattenTree(items)))
       .catch((e) => setError(String(e?.message ?? e)))
       .finally(() => setLoading(false))
     fetchStores()
@@ -77,26 +69,15 @@ export default function Devices() {
     load()
   }, [])
 
-  // 客户端筛选（保持树结构）
   useEffect(() => {
     let r = allRows
-    if (typeFilter !== 'all') r = filterRows(r, (d) => d.device_type === Number(typeFilter))
-    if (onlineFilter !== 'all') r = filterRows(r, (d) => d.status === Number(onlineFilter))
+    if (typeFilter !== 'all') r = r.filter((d) => d.device_type === Number(typeFilter))
+    if (onlineFilter !== 'all') r = r.filter((d) => d.status === Number(onlineFilter))
     setRows(r)
   }, [allRows, typeFilter, onlineFilter])
 
   const deviceOptions = useMemo(
-    () => {
-      const out: { id: number; key: string; device_type: number }[] = []
-      const walk = (items: Row[], depth: number) => {
-        for (const d of items) {
-          out.push({ id: d.id, key: `${'　'.repeat(depth)}${d.name} (#${d.id})`, device_type: d.device_type })
-          if (d.children?.length) walk(d.children, depth + 1)
-        }
-      }
-      walk(allRows, 0)
-      return out
-    },
+    () => allRows.map((d) => ({ value: d.id, label: `${d.name} (#${d.id})` })),
     [allRows],
   )
 
@@ -151,36 +132,40 @@ export default function Devices() {
 
   const columns: ColumnsType<Row> = [
     {
-      title: '类型', dataIndex: 'device_type', width: 130,
+      title: '类型', dataIndex: 'device_type', width: 110,
       render: (v: number) => <Tag color={v <= 2 ? 'blue' : 'default'}>{DEVICE_TYPE_TEXT[v as keyof typeof DEVICE_TYPE_TEXT] ?? '设备'}</Tag>,
     },
-    { title: '名称', dataIndex: 'name' },
-    { title: '设备Key', dataIndex: 'device_key', width: 140, render: (v?: string) => v || '-' },
+    { title: '名称', dataIndex: 'name', width: 160 },
+    { title: '设备Key', dataIndex: 'device_key', width: 130, render: (v?: string) => v || '-' },
     {
-      title: '门店', dataIndex: 'store_id', width: 120,
+      title: '绑定设备', dataIndex: 'parent_name', width: 180,
+      render: (v: string, r) => (r.is_primary ? <Tag color="purple">主设备</Tag> : <span>{v}</span>),
+    },
+    {
+      title: '门店', dataIndex: 'store_id', width: 110,
       render: (v: number) => (storeNames.has(v) ? storeNames.get(v) : `#${v}`),
     },
     {
-      title: '状态', dataIndex: 'status', width: 90,
+      title: '状态', dataIndex: 'status', width: 80,
       render: (v: number) => <Tag color={v === 1 ? 'green' : 'red'}>{v === 1 ? '在线' : '离线'}</Tag>,
     },
     {
-      title: '最后在线', dataIndex: 'last_seen_at', width: 160,
+      title: '最后在线', dataIndex: 'last_seen_at', width: 150,
       render: (v: number) => (v > 0 ? dayjs.unix(v).format('YYYY-MM-DD HH:mm:ss') : '-'),
     },
-    { title: 'CPU%', dataIndex: 'cpu', width: 70, render: (v?: number) => (v ? v.toFixed(0) : '-') },
-    { title: '内存%', dataIndex: 'mem', width: 70, render: (v?: number) => (v ? v.toFixed(0) : '-') },
-    { title: '磁盘%', dataIndex: 'disk', width: 70, render: (v?: number) => (v ? v.toFixed(0) : '-') },
-    { title: 'FPS', dataIndex: 'fps', width: 60, render: (v?: number) => (v ? v.toFixed(0) : '-') },
+    { title: 'CPU%', dataIndex: 'cpu', width: 64, render: (v?: number) => (v ? v.toFixed(0) : '-') },
+    { title: '内存%', dataIndex: 'mem', width: 64, render: (v?: number) => (v ? v.toFixed(0) : '-') },
+    { title: '磁盘%', dataIndex: 'disk', width: 64, render: (v?: number) => (v ? v.toFixed(0) : '-') },
+    { title: 'FPS', dataIndex: 'fps', width: 56, render: (v?: number) => (v ? v.toFixed(0) : '-') },
     {
-      title: '操作', width: 160, fixed: 'right',
+      title: '操作', width: 150, fixed: 'right',
       render: (_, r) => (
         <Space size={4}>
           {canWrite() && <Button size="small" icon={<EditOutlined />} onClick={() => {
             renameForm.setFieldsValue({ device_id: r.id, name: r.name })
             setRenameOpen(true)
           }}>改名</Button>}
-          {canWrite() && r.device_type <= 2 && <Button size="small" icon={<SettingOutlined />} onClick={() => {
+          {canWrite() && r.is_primary && <Button size="small" icon={<SettingOutlined />} onClick={() => {
             pushForm.setFieldsValue({ device_id: r.id })
             setPushOpen(true)
             onSelectDevice(r.id)
@@ -192,12 +177,10 @@ export default function Devices() {
 
   return (
     <Card
-      title="设备管理（门店 → 主设备 → 子设备）"
+      title={`设备管理（${rows.length} 台）`}
       extra={
         <Space wrap>
-          <Select
-            style={{ width: 140 }} value={typeFilter} onChange={setTypeFilter} options={DEVICE_FILTERS}
-          />
+          <Select style={{ width: 140 }} value={typeFilter} onChange={setTypeFilter} options={DEVICE_FILTERS} />
           <Select
             style={{ width: 110 }} value={onlineFilter} onChange={setOnlineFilter}
             options={[
@@ -212,9 +195,8 @@ export default function Devices() {
       {error && <Alert type="error" showIcon message={error} style={{ marginBottom: 12 }} />}
       <Table
         rowKey="id" loading={loading} dataSource={rows} columns={columns} size="small"
-        scroll={{ x: 1200 }}
-        expandable={{ defaultExpandAllRows: true }}
-        pagination={false}
+        scroll={{ x: 1250 }}
+        pagination={{ pageSize: 50, showTotal: (t) => `共 ${t} 条` }}
       />
 
       <Modal
@@ -232,7 +214,10 @@ export default function Devices() {
             <Select
               showSearch
               placeholder="选择边缘盒 / 录入电脑端"
-              options={deviceOptions.map((o) => ({ value: o.id, label: o.key }))}
+              options={deviceOptions.filter((o) => {
+                const d = allRows.find((r) => r.id === o.value)
+                return d && d.is_primary
+              })}
               onSelect={onSelectDevice}
               loading={pushLoading}
             />
@@ -258,7 +243,7 @@ export default function Devices() {
       >
         <Form form={renameForm} layout="vertical">
           <Form.Item name="device_id" label="设备" rules={[{ required: true, message: '请选择设备' }]}>
-            <Select showSearch placeholder="选择要改名的设备（含子设备）" options={deviceOptions.map((o) => ({ value: o.id, label: o.key }))} />
+            <Select showSearch placeholder="选择要改名的设备（含子设备）" options={deviceOptions} />
           </Form.Item>
           <Form.Item name="name" label="新名称" rules={[{ required: true, message: '请输入新名称' }]}>
             <Input placeholder="例如：东门边缘盒" maxLength={64} />
