@@ -580,3 +580,29 @@ func TestStoreStatusZero(t *testing.T) {
 		t.Fatalf("status=1 filter mismatch: %+v", list.Items)
 	}
 }
+
+// TestUserStatusZero 回归：停用账号（status=0）创建与筛选
+func TestUserStatusZero(t *testing.T) {
+	ts, close := newTestServer(t)
+	defer close()
+	base := ts.URL + "/api/v1"
+	token := login(t, base, "admin", "admin123")
+
+	_, status := doJSON(t, http.MethodPost, base+"/users", map[string]any{
+		"username": "disabled-user", "password": "pass123", "role": 2, "status": 0,
+	}, token)
+	if status != 200 {
+		t.Fatalf("create disabled user: %d", status)
+	}
+	out, status := doJSON(t, http.MethodGet, base+"/users?status=0", nil, token)
+	if status != 200 {
+		t.Fatalf("list status=0: %d", status)
+	}
+	var list struct {
+		Items []map[string]interface{} `json:"items"`
+	}
+	_ = json.Unmarshal(out.Data, &list)
+	if len(list.Items) != 1 || list.Items[0]["status"].(float64) != 0 {
+		t.Fatalf("status=0 filter mismatch: %+v", list.Items)
+	}
+}

@@ -23,6 +23,7 @@ export default function Customers() {
   const [page, setPage] = useState(1)
   const [personType, setPersonType] = useState<number | undefined>()
   const [status, setStatus] = useState<number | undefined>()
+  const [name, setName] = useState('')
   const [loading, setLoading] = useState(false)
 
   // 新增
@@ -43,13 +44,13 @@ export default function Customers() {
 
   const load = () => {
     setLoading(true)
-    fetchCustomers({ page, page_size: 20, person_type: personType, status })
+    fetchCustomers({ page, page_size: 20, person_type: personType, status, name: name || undefined })
       .then((r) => { setTotal(r.total); setData(r.items.map((i) => ({ ...i, key: i.id }))) })
       .catch((e) => message.error(errMsg(e)))
       .finally(() => setLoading(false))
   }
 
-  useEffect(load, [page, personType, status])
+  useEffect(load, [page, personType, status, name])
 
   const submitCreate = async () => {
     const values = await createForm.validateFields()
@@ -170,9 +171,13 @@ export default function Customers() {
 
   return (
     <Card
-      title="人员库"
+      title={`人员管理（${total} 条）`}
       extra={
-        <Space>
+        <Space wrap>
+          <Input.Search
+            style={{ width: 180 }} placeholder="按姓名筛选" allowClear
+            onSearch={(v) => { setPage(1); setName(v.trim()) }}
+          />
           <Select
             style={{ width: 130 }} placeholder="人员类型" allowClear
             value={personType}

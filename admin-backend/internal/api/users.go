@@ -12,10 +12,22 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// GET /users 用户列表（admin）
+// GET /users 用户列表（admin；支持 username / role / status 筛选）
 func (s *Server) listUsers(c *gin.Context) {
+	q := s.db.Model(&storage.User{})
+	if v := c.Query("username"); v != "" {
+		q = q.Where("username LIKE ?", "%"+v+"%")
+	}
+	if v := c.Query("role"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			q = q.Where("role = ?", n)
+		}
+	}
+	if v := c.Query("status"); v == "0" || v == "1" {
+		q = q.Where("status = ?", v)
+	}
 	var rows []storage.User
-	if err := s.db.Order("id ASC").Find(&rows).Error; err != nil {
+	if err := q.Order("id ASC").Find(&rows).Error; err != nil {
 		Fail(c, http.StatusInternalServerError, CodeServer, err.Error())
 		return
 	}
@@ -30,7 +42,7 @@ type userCreateReq struct {
 	Username string `json:"username" binding:"required,min=2,max=32"`
 	Password string `json:"password" binding:"required,min=6,max=64"`
 	Role     int8   `json:"role" binding:"oneof=0 1 2"`
-	Status   int8   `json:"status" binding:"oneof=0 1"`
+	Status   *int8  `json:"status" binding:"omitempty,oneof=0 1"` // 未传=启用
 }
 
 // POST /users 创建用户（admin）
@@ -45,13 +57,18 @@ func (s *Server) createUser(c *gin.Context) {
 		Fail(c, http.StatusInternalServerError, CodeServer, err.Error())
 		return
 	}
-	if req.Status == 0 {
-		req.Status = 1
+	status := int8(1)
+	if req.Status != nil {
+		status = *req.Status
 	}
-	u := storage.User{Username: req.Username, PasswordHash: hash, Role: req.Role, Status: req.Status}
+	u := storage.User{Username: req.Username, PasswordHash: hash, Role: req.Role, Status: status}
 	if err := s.db.Create(&u).Error; err != nil {
 		Fail(c, http.StatusInternalServerError, CodeServer, "username 已存在或创建失败: "+err.Error())
 		return
+	}
+	// GORM 对带 default 标签的零值字段 Create 时忽略写入（DB 填默认 1）；显式停用需补 update
+	if req.Status != nil && *req.Status != 1 {
+		s.db.Model(&storage.User{}).Where("id = ?", u.ID).Update("status", *req.Status)
 	}
 	s.audit(c, "create_user", "user", int64(u.ID), "username="+u.Username+" role="+roleName(u.Role))
 	auditDone(c)

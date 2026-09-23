@@ -28,7 +28,7 @@ interface MenuItem {
 const MENU: MenuItem[] = [
   { key: '/', icon: <DashboardOutlined />, label: '概览' },
   { key: '/devices', icon: <DeploymentUnitOutlined />, label: '设备管理' },
-  { key: '/customers', icon: <TeamOutlined />, label: '人员库管理' },
+  { key: '/customers', icon: <TeamOutlined />, label: '人员管理' },
   { key: '/stats', icon: <BarChartOutlined />, label: '客流统计' },
   { key: '/history', icon: <SearchOutlined />, label: '历史来访回查' },
   { key: '/stores', icon: <ShopOutlined />, label: '门店管理', roles: ['admin', 'operator'] },
@@ -39,7 +39,7 @@ const MENU: MenuItem[] = [
     label: '系统管理',
     children: [
       { key: '/tokens', icon: <SafetyOutlined />, label: '令牌管理', roles: ['admin', 'operator'] },
-      { key: '/users', icon: <TeamOutlined />, label: '用户管理', roles: ['admin'] },
+      { key: '/users', icon: <TeamOutlined />, label: '账号管理', roles: ['admin'] },
       { key: '/audit-logs', icon: <FileSearchOutlined />, label: '审计日志', roles: ['admin'] },
     ],
   },
