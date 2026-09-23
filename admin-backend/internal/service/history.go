@@ -32,7 +32,7 @@ func HistorySearch(ctx context.Context, db *gorm.DB, req HistorySearchReq) (*sto
 
 	// 1. 召回候选（person_type=0 + 时间/门店范围）
 	query := db.WithContext(ctx).
-		Select("id, device_id, track_id, customer_id, face_feature, similarity, direction, camera_id, created_at").
+		Select("id, device_id, track_id, customer_id, face_feature, similarity, direction, camera_id, snapshot, snapshot_mime, created_at").
 		Where("person_type = ?", storage.PersonTypeCustomer)
 	if req.StartAt > 0 {
 		query = query.Where("created_at >= ?", req.StartAt)
@@ -62,10 +62,12 @@ func HistorySearch(ctx context.Context, db *gorm.DB, req HistorySearchReq) (*sto
 			Feature:   f,
 			Threshold: req.Threshold,
 			Extra: map[string]any{
-				"created_at": logs[i].CreatedAt, // Unix 秒
-				"device_id":  logs[i].DeviceID,
-				"camera_id":  logs[i].CameraID,
-				"direction":  logs[i].Direction,
+				"created_at":    logs[i].CreatedAt, // Unix 秒
+				"device_id":     logs[i].DeviceID,
+				"camera_id":     logs[i].CameraID,
+				"direction":     logs[i].Direction,
+				"snapshot":      logs[i].Snapshot,      // 对象 key 或 base64（对象存储未开启时）
+				"snapshot_mime": logs[i].SnapshotMime,  // image/jpeg / image/bmp
 			},
 		})
 	}

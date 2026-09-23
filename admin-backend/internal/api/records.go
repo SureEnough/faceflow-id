@@ -39,6 +39,12 @@ func (s *Server) batchRecognition(c *gin.Context) {
 		return
 	}
 
+	// 防越权：设备 token 只能上报自己的数据（用户 token 不受限）
+	if devID := c.GetInt64(ctxDeviceID); devID > 0 && devID != int64(req.DeviceID) {
+		Fail(c, http.StatusForbidden, CodeForbid, "forbidden: device token cannot report for another device")
+		return
+	}
+
 	accepted, skipped := 0, 0
 	for _, r := range req.Records {
 		// 快照：对象存储打开时写入（minio/s3），否则仅保留文本（开发）
@@ -117,6 +123,11 @@ func (s *Server) createVerify(c *gin.Context) {
 		Fail(c, http.StatusBadRequest, CodeParam, err.Error())
 		return
 	}
+	// 防越权：设备 token 只能上报自己的核验记录（用户 token 不受限）
+	if devID := c.GetInt64(ctxDeviceID); devID > 0 && devID != int64(req.DeviceID) {
+		Fail(c, http.StatusForbidden, CodeForbid, "forbidden: device token cannot report for another device")
+		return
+	}
 	enc, err := s.cip.Encrypt(req.IDCardNo)
 	if err != nil {
 		Fail(c, http.StatusInternalServerError, CodeServer, err.Error())
@@ -128,7 +139,7 @@ func (s *Server) createVerify(c *gin.Context) {
 		VerifyResult:  req.VerifyResult,
 		Similarity:    req.Similarity,
 		LivenessScore: req.Liveness,
-		LivePhotoPath: req.LivePhoto,
+		LivePhotoPath: s.saveImage(c.Request.Context(), req.LivePhoto, "verify_photos"),
 		DeviceID:      req.DeviceID,
 		Operator:      req.Operator,
 	}

@@ -77,7 +77,7 @@ func (s *Server) historySearch(c *gin.Context) {
 	}
 
 	records := make([]gin.H, 0, len(details))
-	for i, d := range details {
+	for _, d := range details {
 		rec := gin.H{"log_id": d.LogID, "similarity": d.Similarity}
 		if ts, ok := d.Extra["created_at"].(int64); ok && ts > 0 {
 			rec["created_at"] = time.Unix(ts, 0).UTC().Format(time.RFC3339)
@@ -91,8 +91,21 @@ func (s *Server) historySearch(c *gin.Context) {
 		if v, ok := d.Extra["direction"].(int8); ok {
 			rec["direction"] = v
 		}
-		if i == 0 {
-			rec["snapshot"] = ""
+		// 快照：对象存储 key → 可访问 URL（配了 ObjectPublicURL 时）；
+		// 对象存储未开启时原样输出（base64 开发模式）
+		if v, ok := d.Extra["snapshot"].(string); ok && v != "" {
+			if s.obj != nil {
+				if u := s.obj.URL(c.Request.Context(), v); u != "" {
+					rec["snapshot_url"] = u
+				} else {
+					rec["snapshot"] = v // 本地对象存储未配公网前缀，先给 key
+				}
+			} else {
+				rec["snapshot"] = v
+			}
+		}
+		if v, ok := d.Extra["snapshot_mime"].(string); ok && v != "" {
+			rec["snapshot_mime"] = v
 		}
 		records = append(records, rec)
 	}

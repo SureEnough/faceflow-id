@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"admin-backend/internal/search"
@@ -36,17 +37,17 @@ func staffHash(staffNo string) string {
 }
 
 type customerReq struct {
-	PersonType    int8   `json:"person_type" binding:"oneof=0 1"`
-	Name          string `json:"name" binding:"required"`
-	IDCardNo      string `json:"id_card_no"`
-	StaffNo       string `json:"staff_no"`
-	Department    string `json:"department"`
-	Gender        int8   `json:"gender"`
-	BirthDate     string `json:"birth_date"`
-	Address       string `json:"address"`
-	IDPhoto       string `json:"id_photo"`       // base64 jpg
-	LivePhoto     string `json:"live_photo"`     // base64 jpg
-	FaceFeatureB64 string `json:"face_feature"` // base64 512*float32
+	PersonType     int8   `json:"person_type" binding:"oneof=0 1"`
+	Name           string `json:"name" binding:"required"`
+	IDCardNo       string `json:"id_card_no"`
+	StaffNo        string `json:"staff_no"`
+	Department     string `json:"department"`
+	Gender         int8   `json:"gender"`
+	BirthDate      string `json:"birth_date"`
+	Address        string `json:"address"`
+	IDPhoto        string `json:"id_photo"`        // base64 jpg
+	LivePhoto      string `json:"live_photo"`      // base64 jpg
+	FaceFeatureB64 string `json:"face_feature"`    // base64 512*float32
 }
 
 // GET /customers 分页查询人员库
@@ -71,11 +72,33 @@ func (s *Server) listCustomers(c *gin.Context) {
 			q = q.Where("status = ?", n)
 		}
 	}
-	if v := c.Query("name"); v != "" {
-		q = q.Where("name LIKE ?", "%"+v+"%") // 注意：真实实现需按解密后检索或走服务端解密索引
-	}
 	if v := c.Query("staff_no"); v != "" {
 		q = q.Where("staff_no = ?", v)
+	}
+	// 姓名按 AES-256-GCM 加密存储（name_enc），无法直接 SQL LIKE 检索。
+	// 这里先按其他条件取回候选（id + 密文），解密后在内存中模糊过滤，再按 id 分页。
+	// 门店规模（万级以下）可接受；大数据量需引入可搜索加密 / 确定性索引。
+	if v := c.Query("name"); v != "" {
+		var candidates []struct {
+			ID      uint64
+			NameEnc []byte
+		}
+		if err := q.Find(&candidates).Error; err != nil {
+			Fail(c, http.StatusInternalServerError, CodeServer, err.Error())
+			return
+		}
+		ids := make([]uint64, 0, len(candidates))
+		for _, cd := range candidates {
+			plain, err := s.cip.Decrypt(cd.NameEnc)
+			if err == nil && strings.Contains(plain, v) {
+				ids = append(ids, cd.ID)
+			}
+		}
+		if len(ids) == 0 {
+			OK(c, gin.H{"total": 0, "items": []storage.Customer{}})
+			return
+		}
+		q = s.db.Model(&storage.Customer{}).Where("id IN ?", ids)
 	}
 
 	var total int64
@@ -115,14 +138,19 @@ func (s *Server) createCustomer(c *gin.Context) {
 		return
 	}
 
+	// 照片转存对象存储（开启时返回对象 key；未开启保留 base64 文本，开发模式）
+	ctx := c.Request.Context()
+	idPhotoKey := s.saveImage(ctx, req.IDPhoto, "id_photos")
+	livePhotoKey := s.saveImage(ctx, req.LivePhoto, "live_photos")
+
 	now := time.Now().Unix()
 	cust := storage.Customer{
 		PersonType:    req.PersonType,
 		StaffNo:       strPtr(req.StaffNo),
 		Department:    req.Department,
 		Gender:        req.Gender,
-		IDPhotoPath:   req.IDPhoto,   // 生产：转存对象存储保存路径
-		LivePhotoPath: req.LivePhoto, // 生产：转存对象存储保存路径
+		IDPhotoPath:   idPhotoKey,
+		LivePhotoPath: livePhotoKey,
 		FaceFeature:   feat,
 		Status:        storage.PersonStatusNormal,
 		Version:       1,
