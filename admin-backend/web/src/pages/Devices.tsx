@@ -153,10 +153,6 @@ export default function Devices() {
       title: '最后在线', dataIndex: 'last_seen_at', width: 150,
       render: (v: number) => (v > 0 ? dayjs.unix(v).format('YYYY-MM-DD HH:mm:ss') : '-'),
     },
-    { title: 'CPU%', dataIndex: 'cpu', width: 64, render: (v?: number) => (v ? v.toFixed(0) : '-') },
-    { title: '内存%', dataIndex: 'mem', width: 64, render: (v?: number) => (v ? v.toFixed(0) : '-') },
-    { title: '磁盘%', dataIndex: 'disk', width: 64, render: (v?: number) => (v ? v.toFixed(0) : '-') },
-    { title: 'FPS', dataIndex: 'fps', width: 56, render: (v?: number) => (v ? v.toFixed(0) : '-') },
     {
       title: '操作', width: 150, fixed: 'right',
       render: (_, r) => (
@@ -195,7 +191,7 @@ export default function Devices() {
       {error && <Alert type="error" showIcon message={error} style={{ marginBottom: 12 }} />}
       <Table
         rowKey="id" loading={loading} dataSource={rows} columns={columns} size="small"
-        scroll={{ x: 1250 }}
+        scroll={{ x: 950 }}
         pagination={{ pageSize: 50, showTotal: (t) => `共 ${t} 条` }}
       />
 
