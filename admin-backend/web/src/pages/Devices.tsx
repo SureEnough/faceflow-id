@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Alert, Button, Card, Form, Input, Modal, Select, Space, Tag, Tree, Typography, Spin, message } from 'antd'
 import type { TreeDataNode } from 'antd'
-import { SettingOutlined } from '@ant-design/icons'
-import { fetchDeviceConfig, fetchDeviceTree, pushDeviceConfig } from '../api'
+import { SettingOutlined, EditOutlined } from '@ant-design/icons'
+import dayjs from 'dayjs'
+import { fetchDeviceConfig, fetchDeviceTree, pushDeviceConfig, updateDevice } from '../api'
 import { DEVICE_TYPE_TEXT, type Device } from '../api/types'
 
 function flatten(items: Device[], depth = 0): { id: number; key: string; device_type: number }[] {
@@ -18,13 +19,19 @@ function toTree(items: Device[]): TreeDataNode[] {
   return items.map((d) => ({
     key: d.id,
     title: (
-      <Space size={8}>
+      <Space size={8} wrap>
         <Tag color={DEVICE_TYPE_TEXT[d.device_type as keyof typeof DEVICE_TYPE_TEXT] ? 'blue' : 'default'}>
           {DEVICE_TYPE_TEXT[d.device_type as keyof typeof DEVICE_TYPE_TEXT] ?? '设备'}
         </Tag>
         <span>{d.name}</span>
         <Typography.Text type="secondary">{d.id}</Typography.Text>
         {d.device_key && <Typography.Text type="secondary">{d.device_key}</Typography.Text>}
+        <Tag color={d.status === 1 ? 'green' : 'red'}>{d.status === 1 ? '在线' : '离线'}</Tag>
+        {d.last_seen_at > 0 && (
+          <Typography.Text type="secondary">
+            最后在线 {dayjs.unix(d.last_seen_at).format('MM-DD HH:mm:ss')}
+          </Typography.Text>
+        )}
       </Space>
     ),
     children: d.children?.length ? toTree(d.children) : undefined,
@@ -41,6 +48,10 @@ export default function Devices() {
   const [pushOpen, setPushOpen] = useState(false)
   const [pushLoading, setPushLoading] = useState(false)
   const [pushForm] = Form.useForm<{ device_id: number; config: string }>()
+  // 编辑名称弹窗
+  const [renameOpen, setRenameOpen] = useState(false)
+  const [renameLoading, setRenameLoading] = useState(false)
+  const [renameForm] = Form.useForm<{ device_id: number; name: string }>()
 
   const loadTree = () =>
     fetchDeviceTree()
@@ -83,8 +94,8 @@ export default function Devices() {
     }
     setPushLoading(true)
     try {
-      const res = await pushDeviceConfig(values.device_id, parsed)
-      message.success(`已下发设备 #${res.device_id}，门店边缘盒将在轮询周期内热重载`)
+      await pushDeviceConfig(values.device_id, parsed)
+      message.success('已下发，设备将在轮询周期内热重载')
       setPushOpen(false)
     } catch (e) {
       message.error(String((e as Error).message ?? e))
@@ -93,13 +104,30 @@ export default function Devices() {
     }
   }
 
+  const onRename = async () => {
+    const values = await renameForm.validateFields()
+    setRenameLoading(true)
+    try {
+      await updateDevice(values.device_id, { name: values.name })
+      message.success('已改名')
+      setRenameOpen(false)
+      renameForm.resetFields()
+      loadTree()
+    } catch (e) {
+      message.error(String((e as Error).message ?? e))
+    } finally {
+      setRenameLoading(false)
+    }
+  }
+
   return (
     <Card
       title="设备树（门店 → 主设备 → 子设备）"
       extra={
-        <Button icon={<SettingOutlined />} onClick={() => setPushOpen(true)}>
-          配置下发
-        </Button>
+        <Space>
+          <Button icon={<EditOutlined />} onClick={() => setRenameOpen(true)}>编辑名称</Button>
+          <Button icon={<SettingOutlined />} onClick={() => setPushOpen(true)}>配置下发</Button>
+        </Space>
       }
     >
       {error && <Alert type="error" showIcon message={error} style={{ marginBottom: 12 }} />}
@@ -134,7 +162,26 @@ export default function Devices() {
             label="配置 JSON（cameras / 阈值 / report_endpoint 等；设备身份与 Web 安全字段以本地为准）"
             rules={[{ required: true, message: '请输入配置 JSON' }]}
           >
-            <Input.TextArea rows={14} style={{ fontFamily: 'monospace' }} placeholder='{\n  "det_thresh": 0.5,\n  "cameras": [...]\n}' />
+            <Input.TextArea rows={12} style={{ fontFamily: 'monospace' }} placeholder='{\n  "det_thresh": 0.5,\n  "cameras": [...]\n}' />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title="编辑设备名称"
+        open={renameOpen}
+        onCancel={() => setRenameOpen(false)}
+        onOk={onRename}
+        confirmLoading={renameLoading}
+        okText="保存"
+        cancelText="取消"
+      >
+        <Form form={renameForm} layout="vertical">
+          <Form.Item name="device_id" label="设备" rules={[{ required: true, message: '请选择设备' }]}>
+            <Select showSearch placeholder="选择要改名的设备（含子设备）" options={deviceOptions} />
+          </Form.Item>
+          <Form.Item name="name" label="新名称" rules={[{ required: true, message: '请输入新名称' }]}>
+            <Input placeholder="例如：东门边缘盒" maxLength={64} />
           </Form.Item>
         </Form>
       </Modal>

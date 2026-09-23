@@ -218,6 +218,19 @@ func (s *Server) createCustomer(c *gin.Context) {
 	OK(c, resp)
 }
 
+// customerUpdateReq 更新档案请求（指针字段区分"未传"与"零值"）
+type customerUpdateReq struct {
+	Name           string  `json:"name"`
+	IDCardNo       string  `json:"id_card_no"`
+	Address        string  `json:"address"`
+	StaffNo        *string `json:"staff_no"`
+	Department     string  `json:"department"`
+	Gender         *int8   `json:"gender"`
+	BirthDate      string  `json:"birth_date"`
+	Status         *int8   `json:"status"`
+	FaceFeatureB64 string  `json:"face_feature"`
+}
+
 // PUT /customers/:id 更新档案
 func (s *Server) updateCustomer(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
@@ -225,7 +238,7 @@ func (s *Server) updateCustomer(c *gin.Context) {
 		Fail(c, http.StatusBadRequest, CodeParam, "invalid customer id")
 		return
 	}
-	var req customerReq
+	var req customerUpdateReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		Fail(c, http.StatusBadRequest, CodeParam, err.Error())
 		return
@@ -236,8 +249,32 @@ func (s *Server) updateCustomer(c *gin.Context) {
 			updates["name_enc"] = enc
 		}
 	}
+	if req.IDCardNo != "" {
+		if enc, err := s.cip.Encrypt(req.IDCardNo); err == nil {
+			updates["id_card_no_enc"] = enc
+		}
+	}
+	if req.Address != "" {
+		if enc, err := s.cip.Encrypt(req.Address); err == nil {
+			updates["address_enc"] = enc
+		}
+	}
+	if req.StaffNo != nil {
+		updates["staff_no"] = strPtr(*req.StaffNo)
+	}
 	if req.Department != "" {
 		updates["department"] = req.Department
+	}
+	if req.Gender != nil {
+		updates["gender"] = *req.Gender
+	}
+	if req.BirthDate != "" {
+		if t, err := time.Parse("2006-01-02", req.BirthDate); err == nil {
+			updates["birth_date"] = t.Unix()
+		}
+	}
+	if req.Status != nil {
+		updates["status"] = *req.Status
 	}
 	if req.FaceFeatureB64 != "" {
 		if feat, err := decodeFeature(req.FaceFeatureB64); err == nil {
@@ -255,6 +292,8 @@ func (s *Server) updateCustomer(c *gin.Context) {
 		return
 	}
 	s.decryptCustomer(&cust)
+	s.audit(c, "update_customer", "customer", int64(id), "")
+	auditDone(c)
 	OK(c, gin.H{"customer_id": cust.ID, "version": cust.Version})
 }
 

@@ -35,6 +35,7 @@ export interface Customer {
   department?: string
   gender?: number
   birth_date?: number
+  address?: string
   status: number
   version: number
   created_at: number

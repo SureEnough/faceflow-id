@@ -291,3 +291,51 @@ func TestUpdateDeviceOnline(t *testing.T) {
 		t.Fatalf("viewer edit device should 403, got %d", status)
 	}
 }
+
+// TestUpdateCustomerFields 回归：编辑档案完整字段（姓名/身份证/住址/状态等）
+func TestUpdateCustomerFields(t *testing.T) {
+	ts, close := newEncryptedTestServer(t)
+	defer close()
+	base := ts.URL + "/api/v1"
+	token := login(t, base, "admin", "admin123")
+
+	// 创建顾客
+	out, status := doJSON(t, http.MethodPost, base+"/customers", map[string]any{
+		"person_type": 0, "name": "编辑前", "id_card_no": "110101199001011234",
+		"face_feature": featureBase64(),
+	}, token)
+	if status != 200 {
+		t.Fatalf("create: %d", status)
+	}
+	var created struct {
+		CustomerID uint64 `json:"customer_id"`
+	}
+	_ = json.Unmarshal(out.Data, &created)
+
+	// 编辑：改名 + 改身份证 + 地址 + 性别 + 状态（黑名单）
+	_, status = doJSON(t, http.MethodPut, fmt.Sprintf("%s/customers/%d", base, created.CustomerID), map[string]any{
+		"name": "编辑后", "id_card_no": "110101199202022345", "address": "某市某区",
+		"gender": 1, "status": 1, "birth_date": "1992-02-02",
+	}, token)
+	if status != 200 {
+		t.Fatalf("update: %d", status)
+	}
+
+	// 查询确认
+	out, status = doJSON(t, http.MethodGet, base+"/customers", nil, token)
+	if status != 200 {
+		t.Fatalf("list: %d", status)
+	}
+	var list struct {
+		Items []map[string]interface{} `json:"items"`
+	}
+	if err := json.Unmarshal(out.Data, &list); err != nil {
+		t.Fatal(err)
+	}
+	item := list.Items[0]
+	if item["name"] != "编辑后" || item["id_card_no"] != "110101199202022345" ||
+		item["address"] != "某市某区" || item["gender"].(float64) != 1 ||
+		item["status"].(float64) != 1 {
+		t.Fatalf("updated fields mismatch: %+v", item)
+	}
+}

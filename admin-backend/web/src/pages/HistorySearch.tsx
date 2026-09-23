@@ -1,7 +1,8 @@
-import { useState } from 'react'
-import { Alert, Button, Card, Descriptions, Input, Space, Table, Tag, Typography, message } from 'antd'
+import { useEffect, useMemo, useState } from 'react'
+import { Alert, Button, Card, DatePicker, Descriptions, Input, Select, Space, Table, Tag, Typography, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { historySearch } from '../api'
+import type { Dayjs } from 'dayjs'
+import { fetchDeviceTree, historySearch } from '../api'
 import { errMsg } from '../api/client'
 import { randomFeatureBase64 } from '../api/feature'
 import type { MatchRecord } from '../api/types'
@@ -17,9 +18,14 @@ const columns: ColumnsType<MatchRecord> = [
   { title: '识别时间', dataIndex: 'created_at' },
 ]
 
+interface RangeVal { start: Dayjs | null; end: Dayjs | null }
+
 export default function HistorySearch() {
   const [feature, setFeature] = useState('')
   const [threshold, setThreshold] = useState('0.40')
+  const [stores, setStores] = useState<{ value: number; label: string }[]>([])
+  const [storeIds, setStoreIds] = useState<number[]>([])
+  const [range, setRange] = useState<RangeVal>({ start: null, end: null })
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<{
     total_visits: number
@@ -30,6 +36,18 @@ export default function HistorySearch() {
   } | null>(null)
   const [error, setError] = useState('')
 
+  // 门店列表：从设备树提取 store_id 去重（后端门店管理待补）
+  useEffect(() => {
+    fetchDeviceTree()
+      .then((items) => {
+        const ids = Array.from(new Set(items.map((i) => i.store_id))).sort((a, b) => a - b)
+        setStores(ids.map((id) => ({ value: id, label: `门店 #${id}` })))
+      })
+      .catch(() => setStores([]))
+  }, [])
+
+  const hasScope = useMemo(() => storeIds.length > 0 || range.start || range.end, [storeIds, range])
+
   const search = async () => {
     if (!feature) {
       message.warning('请先粘贴人脸特征（base64）')
@@ -37,8 +55,15 @@ export default function HistorySearch() {
     }
     setLoading(true); setError('')
     try {
-      const r = await historySearch({ face_feature: feature, similarity_threshold: Number(threshold) || 0.4 })
-      setResult(r)
+      const scope: { store_ids?: number[]; start_at?: string; end_at?: string } = {}
+      if (storeIds.length > 0) scope.store_ids = storeIds
+      if (range.start) scope.start_at = range.start.toISOString()
+      if (range.end) scope.end_at = range.end.endOf('day').toISOString()
+      setResult(await historySearch({
+        face_feature: feature,
+        similarity_threshold: Number(threshold) || 0.4,
+        ...(hasScope ? { scope } : {}),
+      }))
     } catch (e) {
       setError(errMsg(e))
     } finally {
@@ -58,10 +83,20 @@ export default function HistorySearch() {
             🎲 生成测试特征
           </Button>
         </Space.Compact>
-        <Space>
-          相似度阈值：
+        <Space wrap>
+          <span>门店：</span>
+          <Select
+            mode="multiple" allowClear placeholder="全部门店" style={{ minWidth: 200 }}
+            value={storeIds} onChange={setStoreIds} options={stores}
+          />
+          <span>时间范围：</span>
+          <DatePicker.RangePicker
+            value={[range.start, range.end]}
+            onChange={(v) => setRange({ start: v?.[0] ?? null, end: v?.[1] ?? null })}
+          />
+          <span>相似度阈值：</span>
           <Input
-            style={{ width: 90 }} value={threshold}
+            style={{ width: 80 }} value={threshold}
             onChange={(e) => setThreshold(e.target.value)} placeholder="0.40"
           />
           <Button type="primary" loading={loading} onClick={search}>开始回查</Button>

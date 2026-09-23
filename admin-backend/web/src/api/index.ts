@@ -1,4 +1,4 @@
-import { get, post, put } from './client'
+import { del, get, post, put } from './client'
 import type {
   Customer,
   Device,
@@ -20,6 +20,9 @@ export const fetchDeviceConfig = (id: number) =>
 export const pushDeviceConfig = (id: number, config: Record<string, unknown>) =>
   put<{ device_id: number }>(`/devices/${id}/config`, { config })
 
+export const updateDevice = (id: number, body: Record<string, unknown>) =>
+  put<{ device_id: number }>(`/devices/${id}`, body)
+
 // ---- 人员库 ----
 export const fetchCustomers = (params: {
   page?: number
@@ -31,6 +34,15 @@ export const fetchCustomers = (params: {
 
 export const createCustomer = (body: Record<string, unknown>) =>
   post<{ customer_id: number; version: number; history?: VisitStats }>('/customers', body)
+
+export const updateCustomer = (id: number, body: Record<string, unknown>) =>
+  put<{ customer_id: number; version: number }>(`/customers/${id}`, body)
+
+export const deleteCustomer = (id: number, extra?: { staff?: boolean }) =>
+  del<{ customer_id: number }>(`/customers/${id}`, extra)
+
+export const appendCustomerFeature = (id: number, faceFeature: string) =>
+  post<{ feature_id: number }>(`/customers/${id}/features`, { face_feature: faceFeature })
 
 // ---- 历史来访回查 ----
 export const historySearch = (body: {
