@@ -79,8 +79,7 @@ int64_t EnsureDeviceRegistered(const Config& cfg, ApiClient* api, int64_t device
   return device_id;
 }
 
-bool UpdateDeviceInfo(int64_t device_id, ApiClient* api, const std::vector<web::CameraStatus>& cams,
-                      const SysInfo& sys, double fps) {
+bool UpdateDeviceInfo(int64_t device_id, ApiClient* api, const std::vector<web::CameraStatus>& cams) {
   if (!api || !api->httpAvailable() || device_id <= 0) return false;
   // edge-box 不再单独心跳：定时调用"编辑设备"接口刷新后台的"最后在线时间/在线状态"。
   // 该接口要求鉴权：先确保设备 token，401 时重登一次后重试。
@@ -88,10 +87,6 @@ bool UpdateDeviceInfo(int64_t device_id, ApiClient* api, const std::vector<web::
 
   std::map<std::string, Json> o;
   o["status"] = Json::Number(1);
-  o["cpu"] = Json::Number(sys.cpu);
-  o["mem"] = Json::Number(sys.mem);
-  o["disk"] = Json::Number(sys.disk);
-  o["fps"] = Json::Number(fps);
   std::vector<Json> subs;
   for (const auto& c : cams) {
     std::map<std::string, Json> sd;

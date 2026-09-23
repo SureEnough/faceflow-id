@@ -25,10 +25,6 @@ CREATE TABLE IF NOT EXISTS devices (
   status        TINYINT      NOT NULL DEFAULT 0 COMMENT '0 离线 / 1 在线',
   psk_hash      VARCHAR(128) DEFAULT NULL COMMENT '仅主设备',
   last_seen_at    BIGINT      DEFAULT 0,               -- Unix 秒（最后在线时间）
-  cpu             DOUBLE      DEFAULT 0,               -- 最近上报 CPU 使用率 %
-  mem             DOUBLE      DEFAULT 0,               -- 最近上报内存使用率 %
-  disk            DOUBLE      DEFAULT 0,               -- 最近上报磁盘使用率 %
-  fps             DOUBLE      DEFAULT 0,               -- 最近上报处理帧率
   config_json   JSON         DEFAULT NULL,
   created_at    BIGINT       NOT NULL,                -- Unix 秒（应用层写入）
   updated_at    BIGINT       NOT NULL,

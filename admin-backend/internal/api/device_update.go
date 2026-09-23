@@ -17,10 +17,6 @@ type updateDeviceReq struct {
 	Name       string           `json:"name"`
 	DeviceKey  string           `json:"device_key"`
 	Status     *int8            `json:"status"` // nil = 不变
-	CPU        *float64         `json:"cpu"`    // 设备上报资源指标（%）
-	Mem        *float64         `json:"mem"`
-	Disk       *float64         `json:"disk"`
-	FPS        *float64         `json:"fps"`
 	SubDevices []subDeviceState `json:"sub_devices"`
 }
 
@@ -59,12 +55,8 @@ func (s *Server) updateDevice(c *gin.Context) {
 		if req.Status != nil {
 			status = *req.Status
 		}
-		updates := map[string]any{"status": status, "last_seen_at": now, "updated_at": now}
-		if req.CPU != nil { updates["cpu"] = *req.CPU }
-		if req.Mem != nil { updates["mem"] = *req.Mem }
-		if req.Disk != nil { updates["disk"] = *req.Disk }
-		if req.FPS != nil { updates["fps"] = *req.FPS }
-		if err := s.db.Model(&storage.Device{}).Where("id = ?", id).Updates(updates).Error; err != nil {
+		if err := s.db.Model(&storage.Device{}).Where("id = ?", id).
+			Updates(map[string]any{"status": status, "last_seen_at": now, "updated_at": now}).Error; err != nil {
 			Fail(c, http.StatusInternalServerError, CodeServer, err.Error())
 			return
 		}

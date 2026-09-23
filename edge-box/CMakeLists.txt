@@ -39,7 +39,6 @@ set(EDGE_BOX_SHARED_SOURCES
   src/backend/scrfd_decode.cpp
   src/common/base64.cpp
   src/common/image_codec.cpp
-  src/common/sysinfo.cpp
   src/config/config.cpp
   src/config/mini_json.cpp
   src/face/face_align.cpp

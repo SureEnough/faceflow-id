@@ -12,7 +12,6 @@
 
 #include "backend/inference_backend.h"
 #include "common/common.h"
-#include "common/sysinfo.h"
 #include "config/config.h"
 #include "face/face_engine.h"
 #include "pipeline/pipeline.h"
@@ -252,24 +251,15 @@ int main(int argc, char** argv) {
     // 每秒：状态板 + 在线刷新/同步/配置下发调度
     const int64_t seconds = now - started_at;
     (void)seconds;
-    eb::SysInfoCollector sys_collector;
-  int64_t last_frames = total_frames.load();
-  if (api->httpAvailable() && !cfg.report_endpoint.empty() && device_id > 0) {
+    if (api->httpAvailable() && !cfg.report_endpoint.empty() && device_id > 0) {
       if (now - last_sync >= std::max(5, cfg.report_interval_s)) {
         sync_version = sync->SyncOnce(device_id, sync_version);
         last_sync = now;
       }
       if (now - last_seen_at >= std::max(5, cfg.online_refresh_interval_s)) {
-        // 不单独心跳：定时调用"编辑设备"接口刷新后台最后在线时间/在线状态，并上报资源指标
+        // 不单独心跳：定时调用"编辑设备"接口刷新后台最后在线时间/在线状态
         auto cams = CollectStatus(cfg, pipelines);
-        const int64_t frames_now = total_frames.load();
-        double fps = 0;
-        if (last_seen_at > 0 && now > last_seen_at) {
-          fps = static_cast<double>(frames_now - last_frames) /
-                static_cast<double>(std::max(1L, static_cast<long>(now - last_seen_at)));
-        }
-        last_frames = frames_now;
-        bool ok = eb::UpdateDeviceInfo(device_id, api.get(), cams, sys_collector.Sample(), fps);
+        bool ok = eb::UpdateDeviceInfo(device_id, api.get(), cams);
         if (ok) last_seen_at = now;
         (void)ok;
       }
