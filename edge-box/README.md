@@ -12,7 +12,7 @@ FaceFlow · 智脸客流人证系统 —— 边缘盒子端，负责多路 RTSP 
 - 匿名轨迹入库（特征+抓拍+时间，**历史来访回查的数据基础**）
 - 断网本地缓存 + 批量上报（幂等键 `track_id+camera_id+created_at`，含抓拍图快照）
 - **多路线程池**（每路相机独立线程，文档 4.1.6；存储/上报线程安全）
-- **设备注册与心跳**：启动自注册主设备+代注册摄像头，周期心跳（后台设备树在线实时）
+- **设备注册与在线刷新**：启动自注册主设备+代注册摄像头，周期调用编辑设备接口刷新后台"最后在线时间/在线状态"（后台设备树在线实时）
 - **后台配置下发**：轮询 `GET /devices/:id/config`，远程配置优先、自动热重载
 - **Web 配置界面**（Vite+React+TS+Antd6）：运行状态监控、摄像头/阈值在线编辑、保存热重载、重启
 
@@ -36,7 +36,7 @@ edge-box/
 │   ├── store/recognition_store.h/.cpp  # 记录存储（SQLite / 内存）
 │   ├── report/report_client.h/.cpp # 上报（cpp-httplib / 打印）
 │   ├── report/features_sync.h/.cpp # 人员库增量同步
-│   ├── report/device_ops.h/.cpp    # 设备注册/心跳/远程配置拉取
+│   ├── report/device_ops.h/.cpp    # 设备注册/在线刷新(编辑设备)/远程配置拉取
 │   ├── web/                        # Web 配置服务（config_manager/web_server）
 │   └── web/ (web/)                 # 前端工程（Vite+React+TS+Antd6，构建产物 web/dist）
 └── tests/smoke_test.cpp            # 无依赖自测
@@ -104,7 +104,7 @@ API（Basic Auth，`web_username`/`web_password`）：
 
 - ✅ 多路线程池：每路相机独立线程 + 帧数/状态线程安全计数，多路不掉帧
 - ✅ 抓拍图快照：新轨迹首帧编码对齐人脸图（OpenCV JPEG / 无依赖 BMP）随记录上报，后台对象存储转存
-- ✅ 设备注册 + 心跳：`POST /devices/register` + `/devices/:id/heartbeat`（含子摄像头在线状态）
+- ✅ 设备注册 + 在线刷新：`POST /devices/register` + `PUT /devices/:id`（周期调用编辑设备接口更新"最后在线时间"，含子摄像头在线状态）
 - ✅ 后台配置下发：边缘盒轮询应用远程配置并热重载（设备身份/Web 安全字段本地优先，防循环）
 - ✅ Web 配置界面（C++ httplib Server + Vite/React/TS/Antd6 前端，Basic Auth，左侧菜单布局：仪表盘/摄像头管理/最近抓拍记录/系统配置）
 - ✅ 摄像头画面预览（`/api/preview`：Worker 线程每路节流编码最近一帧，JPEG/BMP；前端预览弹窗 1.5s 轮询；返回原始分辨率）

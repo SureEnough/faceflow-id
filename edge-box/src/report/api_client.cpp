@@ -94,6 +94,11 @@ bool ApiClient::Post(const std::string& path, const std::string& body, std::stri
   return Request("POST", path, body, out_body, out_status);
 }
 
+bool ApiClient::Put(const std::string& path, const std::string& body, std::string& out_body,
+                    int& out_status) {
+  return Request("PUT", path, body, out_body, out_status);
+}
+
 bool ApiClient::Get(const std::string& path, std::string& out_body, int& out_status) {
   return Request("GET", path, "", out_body, out_status);
 }
@@ -109,6 +114,7 @@ bool ApiClient::Request(const char* method, const std::string& path, const std::
   auto doReq = [&]() -> httplib::Result {
     std::string full = prefix_ + path;
     if (std::string(method) == "GET") return cli->Get(full.c_str(), headers);
+    if (std::string(method) == "PUT") return cli->Put(full.c_str(), headers, body, "application/json");
     return cli->Post(full.c_str(), headers, body, "application/json");
   };
 

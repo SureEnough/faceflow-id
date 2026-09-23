@@ -12,7 +12,7 @@ export interface Device {
   name: string
   store_id: number
   status: 0 | 1
-  last_heartbeat: number
+  last_seen_at: number
   created_at: number
   children?: Device[]
 }

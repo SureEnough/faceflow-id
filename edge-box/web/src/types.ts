@@ -20,7 +20,7 @@ export interface EdgeBoxConfig {
   device_name: string
   report_endpoint: string
   report_interval_s: number
-  heartbeat_interval_s: number
+  online_refresh_interval_s: number
   config_poll_s: number
   retention_days: number
   det_thresh: number

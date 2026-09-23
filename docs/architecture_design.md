@@ -484,12 +484,12 @@ customers ──1:N──► visit_stats（顾客历史来访聚合结果，可�
 | device_key | VARCHAR(64) | 设备标识：边缘盒/录入端=设备序列号；RTSP 摄像头=camera_id；USB 摄像头=usb 通道；读卡器=读卡器编号 |
 | store_id | BIGINT | 门店 |
 | status | TINYINT | 0 离线 / 1 在线 |
-| last_heartbeat | BIGINT | 最后心跳（Unix 秒，子设备为父设备心跳携带时间） |
+| last_seen_at | BIGINT | 最后在线时间（Unix 秒，子设备为父设备刷新携带时间） |
 | config_json | JSON | 主设备配置（摄像头数组每路独立：URL/虚拟线/口径）；子设备可空 |
 
 > **在线状态机制**：
-> - 主设备（边缘盒子、录入电脑端）：自身心跳，超时（默认 5 分钟无心跳）判离线；
-> - 子设备（RTSP 摄像头、USB 摄像头、身份证读卡器）：**由父设备心跳托管上报**在线状态（见 13.1 心跳报文）；父设备离线时子设备标记为「链路离线」。
+> - 主设备（边缘盒子、录入电脑端）：周期调用「编辑设备」接口（PUT /devices/{id}）刷新 `last_seen_at`，超时（默认 5 分钟未刷新）判离线；
+> - 子设备（RTSP 摄像头、USB 摄像头、身份证读卡器）：**由父设备在线刷新托管上报**在线状态；父设备离线时子设备标记为「链路离线」。
 > - 后台「设备管理」以树形展示：门店 → 主设备 → 子设备。
 
 #### 5.2.5 visit_stats（来访统计，可选物化）
@@ -522,7 +522,7 @@ customers ──1:N──► visit_stats（顾客历史来访聚合结果，可�
 | 方法 | 路径 | 说明 | 调用方 |
 |---|---|---|---|
 | POST | /devices/register | 设备注册（5 类；子设备由父设备代为注册） | 边缘盒/录入端 |
-| POST | /devices/{id}/heartbeat | 设备心跳；携带子设备在线状态 | 边缘盒/录入端 |
+| PUT | /devices/{id} | 编辑设备/刷新在线状态（携带子设备在线状态） | 边缘盒/录入端 |
 | GET | /devices | 设备树查询（含父子层级与在线状态） | 后台 |
 | GET | /devices/{id}/config | 拉取设备配置 | 边缘盒/录入端 |
 | POST | /records/recognition/batch | 批量上报识别记录（含匿名轨迹特征） | 边缘盒 |
@@ -683,7 +683,7 @@ customers ──1:N──► visit_stats（顾客历史来访聚合结果，可�
 
 ### 9.3 运维要点
 
-- 设备心跳监控 + 告警（离线、识别中断、磁盘空间不足）。
+- 设备在线监控 + 告警（离线、识别中断、磁盘空间不足）。
 - 日志集中收集（结构化日志，按天滚动）。
 - 模型与配置版本管理，支持灰度下发。
 
@@ -776,34 +776,25 @@ customers ──1:N──► visit_stats（顾客历史来访聚合结果，可�
 { "device_id": 3, "token": "eyJhbGciOi...", "expires_at": "2026-10-20T10:30:11Z" }
 ```
 
-#### POST /devices/{id}/heartbeat（心跳/状态上报）
+#### PUT /devices/{id}（编辑设备 / 在线状态刷新）
 
-请求（主设备心跳，携带子设备在线状态）：
+设备侧周期调用（替代早期心跳）刷新后台「最后在线时间 / 在线状态」，携带子设备在线状态：
 
 ```json
 {
   "status": 1,
-  "cpu": 42.5, "mem": 61.2, "disk": 35.0, "fps": 27.0,
   "sub_devices": [
-    { "device_key": "cam-01", "type": 3, "online": true,  "bitrate_kbps": 4200, "fps": 25 },
+    { "device_key": "cam-01", "type": 3, "online": true },
     { "device_key": "cam-02", "type": 3, "online": false }
   ]
 }
 ```
 
-**录入电脑端心跳扩展**：
+**录入电脑端扩展**：子设备类型为 USB 摄像头（4）与身份证读卡器（5）。
 
-```json
-{
-  "status": 1, "cpu": 18.0, "mem": 45.0, "disk": 20.0,
-  "sub_devices": [
-    { "device_key": "usb0",   "type": 4, "online": true  },
-    { "device_key": "reader-01", "type": 5, "online": true }
-  ]
-}
-```
-
-> 后台根据 `sub_devices` 更新子设备 `status`；主设备心跳超时（5 分钟）则将整棵子树标记离线/链路未知。
+> 设备 token 仅能更新自己，且只允许更新在线状态字段（自动刷新 `last_seen_at`）；
+> admin/operator 可更新设备基本信息。后台根据 `sub_devices` 更新子设备 `status`；
+> 主设备刷新超时（5 分钟）则将整棵子树标记离线/链路未知。
 
 #### GET /devices（设备树查询）
 
@@ -1049,7 +1040,7 @@ CREATE TABLE devices (
   store_id      BIGINT UNSIGNED NOT NULL,
   status        TINYINT      NOT NULL DEFAULT 0 COMMENT '0 离线 / 1 在线',
   psk_hash      VARCHAR(128) DEFAULT NULL COMMENT '仅主设备',
-  last_heartbeat BIGINT      DEFAULT 0,               -- Unix 秒
+  last_seen_at    BIGINT      DEFAULT 0,               -- Unix 秒（最后在线时间）
   config_json   JSON         DEFAULT NULL,
   created_at    BIGINT       NOT NULL,                -- Unix 秒（应用层写入）
   updated_at    BIGINT       NOT NULL,
@@ -1297,7 +1288,7 @@ func HistorySearch(req SearchReq) (*VisitStats, error) {
 
 - 边缘盒 SQLite `sync_status=0` 记录待上报；每批 200 条，成功后置 1。
 - 后台唯一键 `(device_id, track_id, created_at)`：冲突时忽略并返回幂等成功。
-- 补偿：心跳中携带 `pending_count`，后台可远程触发补报。
+- 补偿：在线刷新中携带 `pending_count`，后台可远程触发补报。
 
 ### 15.9 推理后端抽象（C++ 接口示例）
 

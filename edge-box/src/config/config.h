@@ -37,7 +37,7 @@ struct Config {
   // ---- 设备运维（A3/A4） ----
   int64_t store_id = 0;         // >0 时启动向后台自注册（device_id<=0 时必填）
   std::string device_name = "edge-box";
-  int heartbeat_interval_s = 30;   // 心跳周期
+  int online_refresh_interval_s = 30; // 在线状态刷新周期（秒）
   int config_poll_s = 300;         // 后台配置下发轮询周期
 
   // ---- Web 配置界面 ----

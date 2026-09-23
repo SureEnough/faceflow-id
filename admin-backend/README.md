@@ -12,7 +12,8 @@ admin-backend/
 │   │   ├── router.go            # 路由注册（/api/v1）
 │   │   ├── response.go          # 统一响应体/错误码
 │   │   ├── middleware.go        # 鉴权（骨架）
-│   │   ├── devices.go           # 设备注册/心跳/设备树/配置
+│   │   ├── devices.go           # 设备注册/编辑/设备树/配置
+│   │   ├── device_update.go     # 编辑设备（edge-box 周期刷新在线状态）
 │   │   ├── customers.go         # 人员库 CRUD + 特征追加 + 增量同步
 │   │   ├── records.go           # 识别记录批量上报 + 核验记录
 │   │   ├── history.go           # POST /history/search
@@ -61,7 +62,7 @@ DB_DSN="sqlite:./data/admin.db" DEVICE_PSK="dev-psk-change-me" ./bin/server
 |---|---|---|
 | GET | /health | 健康检查 |
 | POST | /devices/register | 设备注册（5 类；子设备带 parent_id） |
-| POST | /devices/:id/heartbeat | 主设备心跳 + 子设备在线状态托管 |
+| PUT | /devices/:id | 编辑设备（admin/operator 改基本信息；设备 token 刷新自己"最后在线时间/在线状态"） |
 | GET | /devices | 设备树查询（鉴权） |
 | GET | /devices/:id/config | 拉取设备配置 |
 | GET | /customers | 人员库分页查询（person_type 过滤） |
@@ -81,7 +82,7 @@ DB_DSN="sqlite:./data/admin.db" DEVICE_PSK="dev-psk-change-me" ./bin/server
 ## 关键设计
 
 - **历史来访回查**：`service.HistorySearch` 只统计 `person_type=0`（顾客含匿名），向量余弦线性扫描 Top-K 后按天去重聚合，并物化到 `visit_stats`；超 10 万条规模经 `search.SearchIndex` 接口切换 FAISS（cgo）。
-- **设备层级**：`devices.parent_id` 自引用；子设备（RTSP/USB 摄像头、读卡器）由父设备注册与心跳托管，父离线则子树标记链路离线。
+- **设备层级**：`devices.parent_id` 自引用；子设备（RTSP/USB 摄像头、读卡器）由父设备注册与"编辑设备"在线刷新托管，父离线则子树标记链路离线。
 - **敏感数据**：姓名/身份证号/住址 AES-256-GCM 加密存储；内部人员同步到边缘盒仅下发工号哈希。
 - **幂等**：识别记录唯一键 `(device_id, track_id, camera_id, created_at)`。
 

@@ -82,7 +82,7 @@ export default function ConfigTab({ onSaved }: { onSaved: () => void }) {
             </Form.Item>
           </Col>
           <Col span={6}>
-            <Form.Item label="心跳间隔（秒）" name="heartbeat_interval_s">
+            <Form.Item label="在线刷新间隔（秒）" name="online_refresh_interval_s">
               <InputNumber style={{ width: '100%' }} min={1} step={1} />
             </Form.Item>
           </Col>

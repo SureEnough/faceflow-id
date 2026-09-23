@@ -3,7 +3,7 @@
   "device_psk": "dev-psk-change-me",
   "report_endpoint": "http://127.0.0.1:8080/api/v1",
   "report_interval_s": 60,
-  "heartbeat_interval_s": 30,
+  "online_refresh_interval_s": 30,
   "config_poll_s": 300,
   "store_id": 1,
   "device_name": "edge-box",

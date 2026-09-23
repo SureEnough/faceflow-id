@@ -79,8 +79,12 @@ int64_t EnsureDeviceRegistered(const Config& cfg, ApiClient* api, int64_t device
   return device_id;
 }
 
-bool SendHeartbeat(int64_t device_id, ApiClient* api, const std::vector<web::CameraStatus>& cams) {
+bool UpdateDeviceInfo(int64_t device_id, ApiClient* api, const std::vector<web::CameraStatus>& cams) {
   if (!api || !api->httpAvailable() || device_id <= 0) return false;
+  // edge-box 不再单独心跳：定时调用"编辑设备"接口刷新后台的"最后在线时间/在线状态"。
+  // 该接口要求鉴权：先确保设备 token，401 时重登一次后重试。
+  if (!api->EnsureToken(device_id)) return false;
+
   std::map<std::string, Json> o;
   o["status"] = Json::Number(1);
   std::vector<Json> subs;
@@ -95,8 +99,12 @@ bool SendHeartbeat(int64_t device_id, ApiClient* api, const std::vector<web::Cam
 
   std::string resp;
   int status = 0;
-  const std::string path = "/devices/" + std::to_string(device_id) + "/heartbeat";
-  if (!api->Post(path, Json::Object(std::move(o)).Dump(), resp, status)) return false;
+  const std::string path = "/devices/" + std::to_string(device_id);
+  if (!api->Put(path, Json::Object(std::move(o)).Dump(), resp, status)) return false;
+  if (status == 401) {
+    if (!api->EnsureToken(device_id)) return false;
+    if (!api->Put(path, Json::Object(std::move(o)).Dump(), resp, status)) return false;
+  }
   return status == 200;
 }
 

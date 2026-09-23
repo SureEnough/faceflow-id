@@ -67,7 +67,7 @@ bool Config::FromJsonStr(const std::string& json, Config& out, std::string* err)
   if (const Json* v = root.Get("max_frames")) tmp.max_frames = static_cast<int>(v->AsInt(0));
   if (const Json* v = root.Get("store_id")) tmp.store_id = v->AsInt(0);
   if (const Json* v = root.Get("device_name")) tmp.device_name = v->AsString();
-  if (const Json* v = root.Get("heartbeat_interval_s")) tmp.heartbeat_interval_s = static_cast<int>(v->AsInt(30));
+  if (const Json* v = root.Get("online_refresh_interval_s")) tmp.online_refresh_interval_s = static_cast<int>(v->AsInt(30));
   if (const Json* v = root.Get("config_poll_s")) tmp.config_poll_s = static_cast<int>(v->AsInt(300));
 
   if (const Json* v = root.Get("web_enabled")) tmp.web_enabled = v->AsBool(false);
@@ -120,7 +120,7 @@ std::string Config::ToJson(bool mask_psk) const {
   o["max_frames"] = Json::Number(static_cast<double>(max_frames));
   o["store_id"] = Json::Number(static_cast<double>(store_id));
   o["device_name"] = Json::String(device_name);
-  o["heartbeat_interval_s"] = Json::Number(static_cast<double>(heartbeat_interval_s));
+  o["online_refresh_interval_s"] = Json::Number(static_cast<double>(online_refresh_interval_s));
   o["config_poll_s"] = Json::Number(static_cast<double>(config_poll_s));
 
   o["web_enabled"] = Json::Bool(web_enabled);

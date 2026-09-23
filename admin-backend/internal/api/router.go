@@ -37,15 +37,15 @@ func (s *Server) Router() *gin.Engine {
 	{
 		api.GET("/health", s.health)
 
-		// 设备（注册/心跳无需自动登录；设备树需鉴权）
+		// 设备（注册无需自动登录；设备树/编辑等需鉴权）
 		api.POST("/auth/login", s.login)
 		api.POST("/auth/device/login", s.deviceLogin)
 		api.POST("/devices/register", s.registerDevice)
-		api.POST("/devices/:id/heartbeat", s.deviceHeartbeat)
 
 		authed := api.Group("", s.authMiddleware(), s.auditMiddleware())
 		{
 			// 设备/记录/统计/查询：任意已登录 token（含设备 token）
+			authed.PUT("/devices/:id", s.updateDevice)
 			authed.GET("/devices", s.deviceTree)
 			authed.GET("/devices/:id/config", s.deviceConfig)
 			authed.PUT("/devices/:id/config", requireRole("admin", "operator"), s.updateDeviceConfig)

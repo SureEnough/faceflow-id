@@ -45,7 +45,7 @@ func (s *Server) deviceLogin(c *gin.Context) {
 	// 刷新在线状态
 	now := time.Now().Unix()
 	if err := s.db.Model(&storage.Device{}).Where("id = ?", dev.ID).
-		Updates(map[string]any{"status": 1, "last_heartbeat": now, "updated_at": now}).Error; err != nil {
+		Updates(map[string]any{"status": 1, "last_seen_at": now, "updated_at": now}).Error; err != nil {
 		Fail(c, http.StatusInternalServerError, CodeServer, err.Error())
 		return
 	}
@@ -105,7 +105,7 @@ func (s *Server) registerDevice(c *gin.Context) {
 		StoreID:    req.StoreID,
 		Status:     1,
 	}
-	dev.LastHeartbeat = time.Now().Unix()
+	dev.LastSeenAt = time.Now().Unix()
 
 	// 幂等 upsert：主设备按 (store_id, name)；子设备按 (parent_id, device_type, device_key)
 	query := s.db.Where("store_id = ? AND name = ?", dev.StoreID, dev.Name)
@@ -140,58 +140,6 @@ func validParent(child, parent int8) bool {
 		return parent == storage.DeviceTypeEnrollPC
 	}
 	return false
-}
-
-// --- 心跳 ---
-
-type subDeviceState struct {
-	DeviceKey string `json:"device_key"`
-	Type      int8   `json:"type" binding:"required,oneof=3 4 5"`
-	Online    bool   `json:"online"`
-}
-
-type heartbeatReq struct {
-	Status     int8             `json:"status"`
-	CPU        float64          `json:"cpu"`
-	Mem        float64          `json:"mem"`
-	Disk       float64          `json:"disk"`
-	FPS        float64          `json:"fps"`
-	SubDevices []subDeviceState `json:"sub_devices"`
-}
-
-// POST /devices/:id/heartbeat 主设备心跳；子设备在线状态由父设备托管
-func (s *Server) deviceHeartbeat(c *gin.Context) {
-	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
-	if err != nil {
-		Fail(c, http.StatusBadRequest, CodeParam, "invalid device id")
-		return
-	}
-	var req heartbeatReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		Fail(c, http.StatusBadRequest, CodeParam, err.Error())
-		return
-	}
-
-	now := time.Now().Unix()
-	status := int8(1)
-	if req.Status == 0 {
-		status = 0
-	}
-	// 更新主设备在线状态
-	if err := s.db.Model(&storage.Device{}).
-		Where("id = ?", id).
-		Updates(map[string]any{"status": status, "last_heartbeat": now}).Error; err != nil {
-		Fail(c, http.StatusInternalServerError, CodeServer, err.Error())
-		return
-	}
-
-	// 更新子设备状态
-	for _, sd := range req.SubDevices {
-		s.db.Model(&storage.Device{}).
-			Where("parent_id = ? AND device_type = ? AND device_key = ?", id, sd.Type, sd.DeviceKey).
-			Updates(map[string]any{"status": boolToInt8(sd.Online), "last_heartbeat": now})
-	}
-	OK(c, gin.H{"device_id": id, "status": status})
 }
 
 // --- 设备树 ---
@@ -246,10 +194,15 @@ func buildTree(devs []*storage.Device) []*storage.Device {
 // --- 配置 ---
 
 // GET /devices/:id/config 拉取主设备配置（原样返回 config_json）
+// 鉴权：用户 token 可读任意；设备 token 只能读自己（防越权读取其他设备配置）。
 func (s *Server) deviceConfig(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
 		Fail(c, http.StatusBadRequest, CodeParam, "invalid device id")
+		return
+	}
+	if devID := c.GetInt64(ctxDeviceID); devID > 0 && devID != int64(id) {
+		Fail(c, http.StatusForbidden, CodeForbid, "forbidden: device token cannot read another device config")
 		return
 	}
 	var dev storage.Device

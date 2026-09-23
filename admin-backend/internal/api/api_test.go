@@ -148,7 +148,7 @@ func TestDeviceLoginToken(t *testing.T) {
 	}
 }
 
-func TestDeviceConfigPushAndHeartbeat(t *testing.T) {
+func TestDeviceConfigPushAndOnlineRefresh(t *testing.T) {
 	ts, close := newTestServer(t)
 	defer close()
 	base := ts.URL + "/api/v1"
@@ -173,13 +173,13 @@ func TestDeviceConfigPushAndHeartbeat(t *testing.T) {
 		t.Fatalf("register cam: %d", status)
 	}
 
-	// 心跳（免鉴权）：主设备 + 子设备上线
-	out, status = doJSON(t, http.MethodPost, fmt.Sprintf("%s/devices/%d/heartbeat", base, edge.DeviceID),
+	// 周期刷新在线状态：编辑设备接口（设备 token，替代原心跳）
+	out, status = doJSON(t, http.MethodPut, fmt.Sprintf("%s/devices/%d", base, edge.DeviceID),
 		map[string]any{"status": 1, "sub_devices": []map[string]any{
 			{"device_key": "cam-01", "type": 3, "online": true},
-		}}, "")
+		}}, edge.Token)
 	if status != 200 || out.Code != 0 {
-		t.Fatalf("heartbeat: %d %s", out.Code, out.Message)
+		t.Fatalf("online refresh: %d %s", out.Code, out.Message)
 	}
 
 	// 配置下发（admin）

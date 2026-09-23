@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS devices (
   store_id      BIGINT UNSIGNED NOT NULL,
   status        TINYINT      NOT NULL DEFAULT 0 COMMENT '0 离线 / 1 在线',
   psk_hash      VARCHAR(128) DEFAULT NULL COMMENT '仅主设备',
-  last_heartbeat BIGINT      DEFAULT 0,               -- Unix 秒
+  last_seen_at    BIGINT      DEFAULT 0,               -- Unix 秒（最后在线时间）
   config_json   JSON         DEFAULT NULL,
   created_at    BIGINT       NOT NULL,                -- Unix 秒（应用层写入）
   updated_at    BIGINT       NOT NULL,

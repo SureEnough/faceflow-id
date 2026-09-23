@@ -1,7 +1,7 @@
 // edge-box/src/main.cpp
 // 边缘盒子入口：加载配置 → 后端（缺依赖 fallback Mock）→ 每路相机独立线程流水线。
 // 支持 Web 配置界面（web_enabled/web_port/web_password）与热重载重建。
-// 主线程负责任命周期：状态板、人员库同步、心跳、配置下发、批量上报、退出清理。
+// 主线程负责任命周期：状态板、人员库同步、周期刷新在线状态（编辑设备）、配置下发、批量上报、退出清理。
 // 用法: edge_box -c edge_box.json [-backend mock|onnx]
 #include <atomic>
 #include <chrono>
@@ -53,7 +53,7 @@ int RebuildRuntime(const eb::Config& cfg, eb::FaceEngine* face, eb::Recognizer* 
   return static_cast<int>(pipelines->size());
 }
 
-// 采集各相机运行状态（供状态板/心跳）
+// 采集各相机运行状态（供状态板/在线刷新）
 std::vector<eb::web::CameraStatus> CollectStatus(const eb::Config& cfg,
                                                  const std::vector<std::unique_ptr<eb::Pipeline>>& pipelines) {
   std::vector<eb::web::CameraStatus> cams;
@@ -208,7 +208,7 @@ int main(int argc, char** argv) {
 
   // 启动即同步一次人员库
   std::time_t last_sync = 0;
-  std::time_t last_heartbeat = 0;
+  std::time_t last_seen_at = 0; // 周期刷新"最后在线时间"
   std::time_t last_report = 0;
   std::time_t last_cleanup = 0;
   std::time_t last_config_poll = 0;
@@ -248,7 +248,7 @@ int main(int argc, char** argv) {
       }
     }
 
-    // 每秒：状态板 + 心跳/同步/配置下发调度
+    // 每秒：状态板 + 在线刷新/同步/配置下发调度
     const int64_t seconds = now - started_at;
     (void)seconds;
     if (api->httpAvailable() && !cfg.report_endpoint.empty() && device_id > 0) {
@@ -256,10 +256,11 @@ int main(int argc, char** argv) {
         sync_version = sync->SyncOnce(device_id, sync_version);
         last_sync = now;
       }
-      if (now - last_heartbeat >= std::max(5, cfg.heartbeat_interval_s)) {
+      if (now - last_seen_at >= std::max(5, cfg.online_refresh_interval_s)) {
+        // 不单独心跳：定时调用"编辑设备"接口刷新后台最后在线时间/在线状态
         auto cams = CollectStatus(cfg, pipelines);
-        bool ok = eb::SendHeartbeat(device_id, api.get(), cams);
-        if (ok) last_heartbeat = now;
+        bool ok = eb::UpdateDeviceInfo(device_id, api.get(), cams);
+        if (ok) last_seen_at = now;
         (void)ok;
       }
       if (now - last_config_poll >= std::max(5, cfg.config_poll_s)) {

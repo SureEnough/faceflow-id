@@ -53,7 +53,7 @@ type Device struct {
 	StoreID       uint64     `gorm:"not null;index" json:"store_id"`
 	Status        int8       `gorm:"not null;default:0" json:"status"` // 0 离线 / 1 在线
 	PSKHash       string     `gorm:"size:128" json:"-"`
-	LastHeartbeat int64 `json:"last_heartbeat"` // Unix 秒，0=从未心跳
+	LastSeenAt    int64 `json:"last_seen_at"` // Unix 秒，0=从未上报在线
 	ConfigJSON    string     `gorm:"type:text" json:"config_json,omitempty"`
 	CreatedAt     int64  `json:"created_at"` // Unix 秒
 	UpdatedAt     int64  `json:"updated_at"` // Unix 秒

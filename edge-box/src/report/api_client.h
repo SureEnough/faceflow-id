@@ -19,6 +19,7 @@ class ApiClient {
   // 带鉴权 POST/GET；成功返回 true（out_status 为状态码）。
   // 收到 401 会自动清除 token；上层可 EnsureToken 后重试一次。
   bool Post(const std::string& path, const std::string& body, std::string& out_body, int& out_status);
+  bool Put(const std::string& path, const std::string& body, std::string& out_body, int& out_status);
   bool Get(const std::string& path, std::string& out_body, int& out_status);
 
   bool httpAvailable() const { return http_available_; }

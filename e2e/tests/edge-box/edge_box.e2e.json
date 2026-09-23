@@ -4,7 +4,7 @@
   "store_id": 0,
   "report_endpoint": "",
   "report_interval_s": 300,
-  "heartbeat_interval_s": 5,
+  "online_refresh_interval_s": 5,
   "config_poll_s": 10,
   "web_enabled": true,
   "web_port": 18191,
