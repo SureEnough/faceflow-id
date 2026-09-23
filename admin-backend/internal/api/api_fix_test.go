@@ -539,3 +539,44 @@ func TestCSVExport(t *testing.T) {
 	}
 }
 
+
+// TestStoreStatusZero 回归：停用门店（status=0）创建与筛选
+func TestStoreStatusZero(t *testing.T) {
+	ts, close := newTestServer(t)
+	defer close()
+	base := ts.URL + "/api/v1"
+	token := login(t, base, "admin", "admin123")
+
+	// 创建停用门店（status=0 显式）
+	out, status := doJSON(t, http.MethodPost, base+"/stores", map[string]any{"name": "停用店", "address": "", "status": 0}, token)
+	if status != 200 || out.Code != 0 {
+		t.Fatalf("create store status=0: %d %s", out.Code, out.Message)
+	}
+	var st struct{ StoreID uint64 `json:"store_id"` }
+	_ = json.Unmarshal(out.Data, &st)
+
+	// 按 status=0 筛选应命中
+	out, status = doJSON(t, http.MethodGet, base+"/stores?status=0", nil, token)
+	if status != 200 {
+		t.Fatalf("list status=0: %d", status)
+	}
+	var list struct {
+		Items []map[string]interface{} `json:"items"`
+	}
+	_ = json.Unmarshal(out.Data, &list)
+	if len(list.Items) != 1 || list.Items[0]["status"].(float64) != 0 {
+		t.Fatalf("status=0 filter mismatch: %+v", list.Items)
+	}
+
+	// 更新为营业中后再按 status=1 命中
+	_, status = doJSON(t, http.MethodPut, fmt.Sprintf("%s/stores/%d", base, st.StoreID),
+		map[string]any{"name": "停用店", "status": 1}, token)
+	if status != 200 {
+		t.Fatalf("update status=1: %d", status)
+	}
+	out, _ = doJSON(t, http.MethodGet, base+"/stores?status=1", nil, token)
+	_ = json.Unmarshal(out.Data, &list)
+	if len(list.Items) != 1 || list.Items[0]["status"].(float64) != 1 {
+		t.Fatalf("status=1 filter mismatch: %+v", list.Items)
+	}
+}

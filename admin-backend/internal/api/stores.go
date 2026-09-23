@@ -10,11 +10,14 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// GET /stores 门店列表
+// GET /stores 门店列表（支持 name / status 筛选）
 func (s *Server) listStores(c *gin.Context) {
 	q := s.db.Model(&storage.Store{}).Order("id ASC")
 	if v := c.Query("name"); v != "" {
 		q = q.Where("name LIKE ?", "%"+v+"%")
+	}
+	if v := c.Query("status"); v == "0" || v == "1" {
+		q = q.Where("status = ?", v)
 	}
 	var rows []storage.Store
 	if err := q.Find(&rows).Error; err != nil {
@@ -27,7 +30,7 @@ func (s *Server) listStores(c *gin.Context) {
 type storeReq struct {
 	Name    string `json:"name" binding:"required,max=64"`
 	Address string `json:"address"`
-	Status  int8   `json:"status" binding:"oneof=0 1"`
+	Status  *int8  `json:"status" binding:"omitempty,oneof=0 1"` // 未传=保持默认
 }
 
 // POST /stores 新增门店（admin / operator）
@@ -39,12 +42,17 @@ func (s *Server) createStore(c *gin.Context) {
 	}
 	now := time.Now().Unix()
 	st := storage.Store{Name: req.Name, Address: req.Address, Status: 1, CreatedAt: now, UpdatedAt: now}
-	if req.Status == 1 || req.Status == 0 {
-		st.Status = req.Status
+	if req.Status != nil {
+		st.Status = *req.Status
 	}
 	if err := s.db.Create(&st).Error; err != nil {
 		Fail(c, http.StatusInternalServerError, CodeServer, err.Error())
 		return
+	}
+	// 注意：GORM 对带 default 标签的零值字段在 Create 时忽略写入（由 DB 填默认）。
+	// 显式传 status=0 时需补一次 update 落库，否则停用门店会被默认成营业中。
+	if req.Status != nil && *req.Status != 1 {
+		s.db.Model(&storage.Store{}).Where("id = ?", st.ID).Update("status", *req.Status)
 	}
 	s.audit(c, "create_store", "store", int64(st.ID), "name="+st.Name)
 	auditDone(c)
@@ -64,8 +72,8 @@ func (s *Server) updateStore(c *gin.Context) {
 		return
 	}
 	updates := map[string]any{"name": req.Name, "address": req.Address, "updated_at": time.Now().Unix()}
-	if req.Status == 0 || req.Status == 1 {
-		updates["status"] = req.Status
+	if req.Status != nil {
+		updates["status"] = *req.Status
 	}
 	res := s.db.Model(&storage.Store{}).Where("id = ?", id).Updates(updates)
 	if res.Error != nil {
