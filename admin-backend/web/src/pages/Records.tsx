@@ -159,7 +159,7 @@ function VerifyTab() {
 
 export default function Records() {
   return (
-    <Card title="记录查询">
+    <Card title="识别记录">
       <Tabs
         items={[
           { key: 'recognition', label: '识别记录', children: <RecognitionTab /> },

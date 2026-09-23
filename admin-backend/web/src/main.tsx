@@ -9,7 +9,6 @@ import Dashboard from './pages/Dashboard'
 import Devices from './pages/Devices'
 import Customers from './pages/Customers'
 import Stats from './pages/Stats'
-import Staff from './pages/Staff'
 import HistorySearch from './pages/HistorySearch'
 import Users from './pages/Users'
 import Tokens from './pages/Tokens'
@@ -35,7 +34,6 @@ createRoot(document.getElementById('root')!).render(
             <Route path="/devices" element={<Devices />} />
             <Route path="/customers" element={<Customers />} />
             <Route path="/stats" element={<Stats />} />
-            <Route path="/staff" element={<Staff />} />
             <Route path="/history" element={<HistorySearch />} />
             <Route path="/users" element={<Users />} />
             <Route path="/stores" element={<Stores />} />
