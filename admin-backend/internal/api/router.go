@@ -56,6 +56,10 @@ func (s *Server) Router() *gin.Engine {
 			authed.GET("/records/recognition", requireRole("admin", "operator", "viewer"), s.listRecognitionRecords)
 			authed.GET("/records/verify", requireRole("admin", "operator", "viewer"), s.listVerifyRecords)
 
+			// 导出：viewer+；审计仅 admin
+			authed.GET("/export/flow.csv", requireRole("admin", "operator", "viewer"), s.exportFlowCSV)
+			authed.GET("/export/customers.csv", requireRole("admin", "operator", "viewer"), s.exportCustomersCSV)
+
 			// 门店：读任意用户 token；写 admin/operator；删 admin
 			authed.GET("/stores", s.listStores)
 			authed.POST("/stores", requireRole("admin", "operator"), s.createStore)
@@ -85,6 +89,7 @@ func (s *Server) Router() *gin.Engine {
 			{
 				admin.GET("/users", s.listUsers)
 				admin.GET("/audit-logs", s.listAuditLogs)
+				admin.GET("/export/audit.csv", s.exportAuditCSV)
 				admin.POST("/users", s.createUser)
 				admin.PUT("/users/:id", s.updateUser)
 				admin.DELETE("/users/:id", s.deleteUser)

@@ -63,12 +63,8 @@ export const historySearch = (body: {
   }>('/history/search', body)
 
 // ---- 统计 ----
-export const fetchFlowStats = (params: {
-  granularity?: string
-  person_type?: number
-  start_at: string
-  end_at?: string
-}) => get<{ items: FlowRow[]; total: { in: number; out: number } }>('/stats/flow', params)
+export const fetchFlowStats = (params: Record<string, unknown>) =>
+  get<{ items: FlowRow[]; total: { in: number; out: number; unique_persons?: number } }>('/stats/flow', params)
 
 export const fetchStaffStats = (params: { start_at: string; end_at?: string }) =>
   get<{ items: StaffRow[] }>('/stats/staff', params)

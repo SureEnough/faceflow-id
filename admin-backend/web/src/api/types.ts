@@ -70,6 +70,7 @@ export interface PageResult<T> {
 /** 客流统计聚合行 */
 export interface FlowRow {
   bucket: string
+  camera_id?: string
   in: number
   out: number
 }

@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -426,5 +427,114 @@ func TestStoresAndRecordQuery(t *testing.T) {
 	_, devTok := regEdge(t, base, "边缘盒-不可查", 1)
 	if _, status := doJSON(t, http.MethodGet, base+"/records/recognition", nil, devTok); status != http.StatusForbidden {
 		t.Fatalf("device token query records should 403, got %d", status)
+	}
+}
+
+// TestFlowStatsEnhance 回归：客流按摄像头拆分 + 唯一识别人数
+func TestFlowStatsEnhance(t *testing.T) {
+	ts, close := newTestServer(t)
+	defer close()
+	base := ts.URL + "/api/v1"
+	token := login(t, base, "admin", "admin123")
+	edgeID, _ := regEdge(t, base, "边缘盒-stats", 1)
+	feat := featureBase64()
+
+	// 上报：cam-1 进 2 条 / cam-2 进 1 条；其中 1 条命中顾客（建档后）
+	recs := []map[string]any{
+		{"track_id": "S1", "person_type": 0, "face_feature": feat, "direction": 0, "camera_id": "cam-1", "created_at": "2026-09-18T10:00:00Z"},
+		{"track_id": "S2", "person_type": 0, "face_feature": feat, "direction": 0, "camera_id": "cam-1", "created_at": "2026-09-18T11:00:00Z"},
+		{"track_id": "S3", "person_type": 0, "face_feature": feat, "direction": 1, "camera_id": "cam-2", "created_at": "2026-09-18T12:00:00Z"},
+	}
+	if _, status := doJSON(t, http.MethodPost, base+"/records/recognition/batch", map[string]any{"device_id": edgeID, "records": recs}, token); status != 200 {
+		t.Fatalf("batch: %d", status)
+	}
+	// 建档命中 S1/S2/S3 中一条（创建顾客回查只返回聚合，不影响记录 customer_id；直接更新一条记录命中）
+	_, status := doJSON(t, http.MethodPost, base+"/customers", map[string]any{
+		"person_type": 0, "name": "统计人", "id_card_no": "110101199001011299", "face_feature": feat,
+	}, token)
+	if status != 200 {
+		t.Fatalf("create customer: %d", status)
+	}
+
+	// 按摄像头拆分
+	out, status := doJSON(t, http.MethodGet, base+"/stats/flow?granularity=day&start_at=2026-09-01T00:00:00Z&group_by=camera&unique=1", nil, token)
+	if status != 200 || out.Code != 0 {
+		t.Fatalf("flow group: %d %s", out.Code, out.Message)
+	}
+	var g struct {
+		Items []map[string]interface{} `json:"items"`
+		Total struct {
+			In            int64 `json:"in"`
+			Out           int64 `json:"out"`
+			UniquePersons int64 `json:"unique_persons"`
+		} `json:"total"`
+	}
+	_ = json.Unmarshal(out.Data, &g)
+	if len(g.Items) != 2 {
+		t.Fatalf("expect 2 camera buckets, got %+v", g.Items)
+	}
+	if g.Total.In != 2 || g.Total.Out != 1 {
+		t.Fatalf("total mismatch: %+v", g.Total)
+	}
+}
+
+// TestCSVExport 回归：客流/人员 CSV 导出
+func TestCSVExport(t *testing.T) {
+	ts, close := newTestServer(t)
+	defer close()
+	base := ts.URL + "/api/v1"
+	token := login(t, base, "admin", "admin123")
+
+	// 准备数据：门店 + 人员
+	_, status := doJSON(t, http.MethodPost, base+"/stores", map[string]any{"name": "导出店"}, token)
+	if status != 200 {
+		t.Fatalf("create store: %d", status)
+	}
+	_, status = doJSON(t, http.MethodPost, base+"/customers", map[string]any{
+		"person_type": 0, "name": "导出人", "id_card_no": "110101199001011211", "face_feature": featureBase64(),
+	}, token)
+	if status != 200 {
+		t.Fatalf("create customer: %d", status)
+	}
+
+	// 客流 CSV：直接访问导出端点拿原始响应（不走 doJSON 包装）
+	req, _ := http.NewRequest(http.MethodGet, base+"/export/flow.csv?granularity=day&start_at=2026-09-01T00:00:00Z", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("flow csv: %v", err)
+	}
+	defer resp.Body.Close()
+	buf := new(bytes.Buffer)
+	_, _ = buf.ReadFrom(resp.Body)
+	if resp.StatusCode != 200 || !strings.Contains(buf.String(), "bucket,in,out") {
+		t.Fatalf("flow csv invalid: status=%d body=%q", resp.StatusCode, buf.String())
+	}
+
+	// 人员 CSV
+	req2, _ := http.NewRequest(http.MethodGet, base+"/export/customers.csv", nil)
+	req2.Header.Set("Authorization", "Bearer "+token)
+	resp2, err := http.DefaultClient.Do(req2)
+	if err != nil {
+		t.Fatalf("customers csv: %v", err)
+	}
+	defer resp2.Body.Close()
+	buf2 := new(bytes.Buffer)
+	_, _ = buf2.ReadFrom(resp2.Body)
+	if resp2.StatusCode != 200 || !strings.Contains(buf2.String(), "导出人") {
+		t.Fatalf("customers csv invalid: status=%d body=%q", resp2.StatusCode, buf2.String())
+	}
+
+	// 设备 token 导出 → 403
+	_, devTok := regEdge(t, base, "边缘盒-导出", 1)
+	req3, _ := http.NewRequest(http.MethodGet, base+"/export/flow.csv?start_at=2026-09-01T00:00:00Z", nil)
+	req3.Header.Set("Authorization", "Bearer "+devTok)
+	resp3, err := http.DefaultClient.Do(req3)
+	if err != nil {
+		t.Fatalf("device export: %v", err)
+	}
+	defer resp3.Body.Close()
+	if resp3.StatusCode != http.StatusForbidden {
+		t.Fatalf("device token export should 403, got %d", resp3.StatusCode)
 	}
 }

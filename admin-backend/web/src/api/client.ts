@@ -66,3 +66,14 @@ export async function del<T>(url: string, params?: Record<string, unknown>): Pro
 export function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
 }
+
+// 下载 CSV（走 axios blob，自动携带 Authorization；后端输出 UTF-8 BOM）
+export async function downloadCsv(url: string, params: Record<string, unknown>, filename: string) {
+  const { data } = await client.get<Blob>(url, { params, responseType: 'blob' })
+  const blob = data instanceof Blob ? data : new Blob([data as unknown as BlobPart], { type: 'text/csv;charset=utf-8' })
+  const link = document.createElement('a')
+  link.href = URL.createObjectURL(blob)
+  link.download = filename
+  link.click()
+  URL.revokeObjectURL(link.href)
+}

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Card, Input, Table, Tag, message } from 'antd'
+import { Button, Card, Input, Table, Tag, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { client, getToken, errMsg } from '../api/client'
+import { client, downloadCsv, getToken, errMsg } from '../api/client'
 import type { ApiResp } from '../api/client'
 
 interface AuditRow {
@@ -53,7 +53,14 @@ export default function AuditLogs() {
   return (
     <Card
       title="审计日志（写操作全程留痕，仅管理员）"
-      extra={<Input.Search placeholder="按操作人筛选" style={{ width: 200 }} onSearch={(v) => { setPage(1); setKw(v) }} allowClear />}
+      extra={
+        <span>
+          <Input.Search placeholder="按操作人筛选" style={{ width: 200, marginRight: 8 }} onSearch={(v) => { setPage(1); setKw(v) }} allowClear />
+          <Button onClick={() => downloadCsv('/export/audit.csv', {}, 'audit.csv').catch((e) => message.error(errMsg(e)))}>
+            导出 CSV
+          </Button>
+        </span>
+      }
     >
       <Table
         rowKey="id" loading={loading} size="small" dataSource={rows} columns={columns}

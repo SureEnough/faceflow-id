@@ -7,7 +7,7 @@ import dayjs from 'dayjs'
 import {
   appendCustomerFeature, createCustomer, deleteCustomer, fetchCustomers, fetchVisitStats, updateCustomer,
 } from '../api'
-import { errMsg } from '../api/client'
+import { downloadCsv, errMsg } from '../api/client'
 import type { Customer, VisitStats } from '../api/types'
 
 const STATUS_TEXT: Record<number, string> = { 0: '正常', 1: '黑名单', 2: '注销', 3: '离职' }
@@ -185,6 +185,14 @@ export default function Customers() {
               { value: 2, label: '注销' }, { value: 3, label: '离职' },
             ]}
           />
+          <Button
+            onClick={() =>
+              downloadCsv('/export/customers.csv', { person_type: personType, status }, 'customers.csv')
+                .catch((e) => message.error(errMsg(e)))
+            }
+          >
+            导出 CSV
+          </Button>
           <Button type="primary" onClick={() => setCreateOpen(true)}>新增人员</Button>
         </Space>
       }
