@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
 import {
-  Button, Card, Form, Input, Modal, Popconfirm, Radio, Select, Space, Table, Tag, Typography, Upload, message,
+  Button, Card, Dropdown, Form, Input, Modal, Popconfirm, Radio, Select, Space, Table, Tag, Typography, Upload, message,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { InboxOutlined, UploadOutlined } from '@ant-design/icons'
+import { DownOutlined, InboxOutlined, UploadOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import {
   appendCustomerFeature, createCustomer, deleteCustomer, downloadImportTemplate,
-  fetchCustomers, fetchStores, fetchVisitStats, importCustomers, updateCustomer,
+  exportCustomersXLSX, fetchCustomers, fetchStores, fetchVisitStats, importCustomers, updateCustomer,
 } from '../api'
 import { downloadCsv, errMsg } from '../api/client'
 import { canWrite, isAdmin } from '../utils/role'
@@ -262,14 +262,24 @@ export default function Customers() {
             onChange={(v) => { setPage(1); setStoreFilter(v) }}
             options={stores.map((s) => ({ value: s.id, label: s.name }))}
           />
-          <Button
-            onClick={() =>
-              downloadCsv('/export/customers.csv', { person_type: personType, status, store_id: storeFilter }, 'customers.csv')
-                .catch((e) => message.error(errMsg(e)))
-            }
+          <Dropdown
+            menu={{
+              items: [
+                { key: 'csv', label: '导出 CSV' },
+                { key: 'xlsx', label: '导出 Excel (.xlsx)' },
+              ],
+              onClick: ({ key }) => {
+                const params = { person_type: personType, status, store_id: storeFilter }
+                if (key === 'csv') {
+                  downloadCsv('/export/customers.csv', params, 'customers.csv').catch((e) => message.error(errMsg(e)))
+                } else {
+                  exportCustomersXLSX(params).catch((e) => message.error(errMsg(e)))
+                }
+              },
+            }}
           >
-            导出 CSV
-          </Button>
+            <Button>导出 <DownOutlined /></Button>
+          </Dropdown>
           {canWrite() && <Button onClick={() => { setImportResult(null); setImportOpen(true) }}>模板导入</Button>}
           {canWrite() && <Button type="primary" onClick={() => setCreateOpen(true)}>新增人员</Button>}
         </Space>

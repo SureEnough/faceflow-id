@@ -279,3 +279,85 @@ func TestImportMissingRequiredColumn(t *testing.T) {
 		t.Fatalf("want 400, got %d body=%s", st, string(out.Data))
 	}
 }
+
+func TestExportCustomersXLSX(t *testing.T) {
+	ts, close := newTestServer(t)
+	defer close()
+	token := login(t, ts.URL+"/api/v1", "admin", "admin123")
+	base := ts.URL + "/api/v1"
+
+	// 建门店 + 人员
+	out, st := doJSON(t, http.MethodPost, base+"/stores",
+		map[string]string{"name": "导出门店"}, token)
+	if st != 200 {
+		t.Fatalf("create store status = %d", st)
+	}
+	var store struct {
+		ID uint64 `json:"store_id"`
+	}
+	_ = json.Unmarshal(out.Data, &store)
+
+	_, st = doJSON(t, http.MethodPost, base+"/customers", map[string]any{
+		"person_type": 0, "name": "导出测试", "id_card_no": "110101200001011111",
+		"store_id": store.ID,
+	}, token)
+	if st != 200 {
+		t.Fatalf("create customer status = %d", st)
+	}
+
+	raw, st := downloadRaw(t, base+"/export/customers.xlsx", token)
+	if st != 200 {
+		t.Fatalf("export xlsx status = %d", st)
+	}
+	f, err := excelize.OpenReader(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatalf("not valid xlsx: %v", err)
+	}
+	defer f.Close()
+	rows, err := f.GetRows("人员档案")
+	if err != nil {
+		t.Fatalf("get rows: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("rows = %d, want 2 (header + 1 data)", len(rows))
+	}
+	if rows[0][0] != "ID" || rows[0][1] != "人员类型" {
+		t.Fatalf("header = %v", rows[0])
+	}
+	if rows[1][2] != "导出测试" || rows[1][9] != "导出门店" || rows[1][1] != "顾客" {
+		t.Fatalf("row = %v", rows[1])
+	}
+}
+
+func TestExportCustomersXLSXFilterStore(t *testing.T) {
+	ts, close := newTestServer(t)
+	defer close()
+	token := login(t, ts.URL+"/api/v1", "admin", "admin123")
+	base := ts.URL + "/api/v1"
+
+	// 两个门店各建一人
+	out, _ := doJSON(t, http.MethodPost, base+"/stores", map[string]string{"name": "甲店"}, token)
+	var s1 struct{ ID uint64 `json:"store_id"` }
+	_ = json.Unmarshal(out.Data, &s1)
+	out, _ = doJSON(t, http.MethodPost, base+"/stores", map[string]string{"name": "乙店"}, token)
+	var s2 struct{ ID uint64 `json:"store_id"` }
+	_ = json.Unmarshal(out.Data, &s2)
+	_, _ = doJSON(t, http.MethodPost, base+"/customers", map[string]any{
+		"person_type": 0, "name": "甲店人", "id_card_no": "110101200001012222", "store_id": s1.ID}, token)
+	_, _ = doJSON(t, http.MethodPost, base+"/customers", map[string]any{
+		"person_type": 0, "name": "乙店人", "id_card_no": "110101200001013333", "store_id": s2.ID}, token)
+
+	raw, st := downloadRaw(t, fmt.Sprintf("%s/export/customers.xlsx?store_id=%d", base, s1.ID), token)
+	if st != 200 {
+		t.Fatalf("export status = %d", st)
+	}
+	f, err := excelize.OpenReader(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatalf("xlsx: %v", err)
+	}
+	defer f.Close()
+	rows, _ := f.GetRows("人员档案")
+	if len(rows) != 2 || rows[1][2] != "甲店人" {
+		t.Fatalf("filtered rows = %v", rows)
+	}
+}

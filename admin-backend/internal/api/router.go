@@ -59,6 +59,7 @@ func (s *Server) Router() *gin.Engine {
 			// 导出：viewer+；审计仅 admin
 			authed.GET("/export/flow.csv", requireRole("admin", "operator", "viewer"), s.exportFlowCSV)
 			authed.GET("/export/customers.csv", requireRole("admin", "operator", "viewer"), s.exportCustomersCSV)
+			authed.GET("/export/customers.xlsx", requireRole("admin", "operator", "viewer"), s.exportCustomersXLSX)
 
 			// 全局系统配置：admin
 			authed.GET("/system/config", requireRole("admin"), s.getSystemConfig)

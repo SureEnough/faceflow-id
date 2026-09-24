@@ -92,6 +92,17 @@ export const fetchSystemConfig = () => get<SystemConfig>('/system/config')
 export const saveSystemConfig = (body: { face_service_url?: string; face_service_key?: string }) =>
   put<{ updated: boolean }>('/system/config', body)
 
+// ---- 人员导出 ----
+export const exportCustomersXLSX = (params: Record<string, unknown>) =>
+  client.get<Blob>('/export/customers.xlsx', { params, responseType: 'blob' }).then(({ data }) => {
+    const blob = data instanceof Blob ? data : new Blob([data as unknown as BlobPart])
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = 'customers.xlsx'
+    link.click()
+    URL.revokeObjectURL(link.href)
+  })
+
 // ---- 人员批量导入（Excel 模板）----
 export const downloadImportTemplate = () =>
   client.get<Blob>('/customers/import/template', { responseType: 'blob' }).then(({ data }) => {
