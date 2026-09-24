@@ -147,7 +147,7 @@ int main(int argc, char** argv) {
   std::unique_ptr<eb::web::PreviewStore> preview = std::make_unique<eb::web::PreviewStore>();
   std::unique_ptr<eb::web::WebServer> web;
   if (cfg.web_enabled && !cfg.web_password.empty()) {
-    web = std::make_unique<eb::web::WebServer>(&cm, &board, store.get(), preview.get());
+    web = std::make_unique<eb::web::WebServer>(&cm, &board, store.get(), preview.get(), &face);
     if (web->Start(cfg.web_port, cfg.web_username, cfg.web_password, cfg.web_static_dir,
                    g_web_stop)) {
       LOG_INFO("web UI started: http://0.0.0.0:%d (login %s)", cfg.web_port,

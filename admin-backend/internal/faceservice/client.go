@@ -34,9 +34,12 @@ var (
 )
 
 // Config 客户端配置。
+// APIKey 兼容两种鉴权：
+//   - 普通密钥：请求头 X-API-Key（face-service 方式）；
+//   - 含 ":" 的 user:pass：HTTP Basic Auth（边缘盒 Web 界面方式，如 "admin:密码"）。
 type Config struct {
-	BaseURL string // 接口地址，如 http://127.0.0.1:8090
-	APIKey  string // 请求密钥（X-API-Key），空则不携带
+	BaseURL string // 接口地址，如 http://127.0.0.1:8090 或 http://<edge-box>:8180
+	APIKey  string // 密钥；空则不携带鉴权头
 }
 
 // Client face-service HTTP 客户端。
@@ -56,6 +59,19 @@ func New(cfg Config) *Client {
 		baseURL: base,
 		apiKey:  cfg.APIKey,
 		http:    &http.Client{Timeout: DefaultTimeout},
+	}
+}
+
+// authorize 按密钥格式设置鉴权头：含 ":" -> Basic Auth；否则 X-API-Key。
+func (c *Client) authorize(req *http.Request) {
+	if c.apiKey == "" {
+		return
+	}
+	user, pass, ok := strings.Cut(c.apiKey, ":")
+	if ok {
+		req.SetBasicAuth(user, pass)
+	} else {
+		req.Header.Set("X-API-Key", c.apiKey)
 	}
 }
 
@@ -95,9 +111,7 @@ func (c *Client) Extract(ctx context.Context, image []byte, mime string) ([]byte
 		return nil, err
 	}
 	req.Header.Set("Content-Type", w.FormDataContentType())
-	if c.apiKey != "" {
-		req.Header.Set("X-API-Key", c.apiKey)
-	}
+	c.authorize(req)
 
 	resp, err := c.http.Do(req)
 	if err != nil {

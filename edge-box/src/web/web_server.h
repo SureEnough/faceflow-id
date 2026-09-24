@@ -18,6 +18,7 @@
 #include "web/config_manager.h"
 
 namespace eb {
+class FaceEngine;        // 前置声明：仅持指针（生命周期归 main）
 class RecognitionStore;  // 前置声明：仅持指针（store 生命周期归 main）
 }
 
@@ -29,8 +30,8 @@ class PreviewStore;  // 前置声明：仅持指针
 class WebServer {
  public:
   WebServer(ConfigManager* cm, StatusBoard* status, RecognitionStore* store = nullptr,
-            PreviewStore* preview = nullptr)
-      : cm_(cm), status_(status), store_(store), preview_(preview) {}
+            PreviewStore* preview = nullptr, FaceEngine* face = nullptr)
+      : cm_(cm), status_(status), store_(store), preview_(preview), face_(face) {}
   ~WebServer();
 
   // 启动 HTTP 服务（内部独立线程，立即返回）；失败返回 false
@@ -44,6 +45,7 @@ class WebServer {
   StatusBoard* status_;
   RecognitionStore* store_;  // 最近抓拍数据源（nullptr 时 /api/snapshots 返回空）
   PreviewStore* preview_;    // 画面预览缓存（nullptr 时 /api/preview 返回 400）
+  FaceEngine* face_;         // 人脸引擎（nullptr 时 /api/face/extract 返回 400）
   void* server_ = nullptr;  // HAVE_CPPHTTPLIB 时持有 httplib::Server*
   void* thread_ = nullptr;  // HAVE_CPPHTTPLIB 时持有 std::thread*
 };

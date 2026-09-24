@@ -97,6 +97,7 @@ API（Basic Auth，`web_username`/`web_password`）：
 | PUT | `/api/config` | 更新配置（校验 + 原子写盘 + 置重载标记） |
 | POST | `/api/reload` | 重新读取磁盘配置并热重载 |
 | POST | `/api/restart` | 请求进程退出（守护进程拉起） |
+| POST | `/api/face/extract` | **人脸特征提取**（与 face-service 契约一致）：multipart `image` 或 JSON `{"image_b64"}`，返回 `{feature_b64,dim,faces,engine}`；未检测到人脸 404。管理后台「系统配置→人脸识别服务」指向本接口（密钥填 `admin:web密码` 走 Basic Auth），即可让后台直接调用边缘盒为人员头像提取特征 |
 
 > 安全提示：Web 服务监听 `0.0.0.0`，生产请通过防火墙仅放行门店内网，或置于 VPN/反代之后。
 

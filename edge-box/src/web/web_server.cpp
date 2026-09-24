@@ -14,7 +14,9 @@
 
 #include "common/base64.h"
 #include "common/common.h"
+#include "common/image_codec.h"
 #include "config/mini_json.h"
+#include "face/face_engine.h"
 #include "store/recognition_store.h"
 #include "web/preview_store.h"
 
@@ -189,6 +191,63 @@ bool WebServer::Start(int port, const std::string& username, const std::string& 
       // mime 固定值 + base64 为 URL 安全字符，无需 JSON 转义；width/height 为原始分辨率
       OkResp(res, "{\"mime\":\"" + mime + "\",\"b64\":\"" + b64 +
                   "\",\"width\":" + std::to_string(srcW) + ",\"height\":" + std::to_string(srcH) + "}");
+    });
+
+    // 人脸特征提取：与 face-service 契约一致（POST /api/face/extract）。
+    // 鉴权：复用 Basic Auth（web_username/web_password）；管理后台系统配置的
+    // 人脸识别服务地址指向本接口时，密钥填 "user:password" 即走 Basic 认证。
+    svr->Post("/api/face/extract", [&](const httplib::Request& req, httplib::Response& res) {
+      if (!guard(req, res)) return;
+      if (!face_) {
+        FailResp(res, 400, "face engine unavailable");
+        return;
+      }
+      // 1. 取图：multipart file(image) 或 JSON image_b64
+      std::string img;
+      if (req.is_multipart_form_data() && req.form.has_file("image")) {
+        img = req.form.get_file("image").content;
+      } else {
+        Json root;
+        if (!Json::Parse(req.body, root)) {
+          FailResp(res, 400, "invalid json");
+          return;
+        }
+        const Json* v = root.Get("image_b64");
+        if (!v || v->AsString().empty()) {
+          FailResp(res, 400, "multipart image or image_b64 required");
+          return;
+        }
+        if (!Base64Decode(v->AsString(), img)) {
+          FailResp(res, 400, "image_b64 invalid");
+          return;
+        }
+      }
+      if (img.empty()) {
+        FailResp(res, 400, "empty image");
+        return;
+      }
+      // 2. 解码 + 人脸采样（检测 → 对齐 → 特征 + 活体）
+      ImageFrame frame;
+      if (!DecodeImageBytes(img, frame)) {
+        FailResp(res, 400, "image decode failed");
+        return;
+      }
+      FaceSample sample;
+      const float det_thresh = cm_->Snapshot().det_thresh;
+      if (!face_->Sample(frame, det_thresh, sample) || !sample.has_feature) {
+        FailResp(res, 404, "no face detected or feature extract failed");
+        return;
+      }
+      // 3. 特征 → base64（512×float32，与后台/face-service 契约一致）
+      const Feature& feat = sample.feature;
+      const std::string raw(reinterpret_cast<const char*>(feat.data()), feat.size() * sizeof(float));
+      std::map<std::string, Json> o;
+      o["feature_b64"] = Json::String(Base64Encode(reinterpret_cast<const unsigned char*>(raw.data()), raw.size()));
+      o["dim"] = Json::Number(static_cast<double>(kFeatureDim));
+      o["faces"] = Json::Number(1.0);
+      o["engine"] = Json::String("edge-box");
+      OkResp(res, Json::Object(std::move(o)).Dump());
+      LOG_INFO("face extract ok: image=%zuB", img.size());
     });
 
     svr->Post("/api/reload", [&](const httplib::Request& req, httplib::Response& res) {

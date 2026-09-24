@@ -99,3 +99,30 @@ func TestEmptyImage(t *testing.T) {
 		t.Fatal("expected error for empty image")
 	}
 }
+
+func TestExtractBasicAuth(t *testing.T) {
+	// 密钥含 ":" 时走 HTTP Basic Auth（边缘盒方式）
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user, pass, ok := r.BasicAuth()
+		if !ok || user != "admin" || pass != "admin123" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"code": 0, "message": "ok", "data": map[string]any{
+				"feature_b64": testFeature(), "dim": 512, "faces": 1, "engine": "edge-box",
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := New(Config{BaseURL: srv.URL, APIKey: "admin:admin123"})
+	feat, err := c.Extract(context.Background(), []byte("img"), "image/jpeg")
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+	if len(feat) != 512*4 {
+		t.Fatalf("feature len = %d", len(feat))
+	}
+}

@@ -119,6 +119,9 @@ if(CPPHTTPLIB_INCLUDE_DIR)
     src/config/mini_json.cpp
     src/common/base64.cpp
     src/store/recognition_store.cpp
+    src/backend/mock_backend.cpp
+    src/face/face_align.cpp
+    src/face/face_engine.cpp
   )
   target_include_directories(edge_box_web_test PRIVATE src ${CMAKE_CURRENT_SOURCE_DIR}/third_party)
   apply_deps(edge_box_web_test)

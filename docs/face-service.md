@@ -77,8 +77,14 @@ python3 -m uvicorn app:app --host 0.0.0.0 --port 8090
 
 | 配置项 | 说明 |
 |---|---|
-| 人脸识别服务地址（face_service_url） | 留空=使用默认 `http://127.0.0.1:8090`；生产可填边缘盒/独立 face-service 地址 |
-| 人脸识别服务密钥（face_service_key） | 与 face-service 的 `FACE_SERVICE_API_KEY` 一致；留空则不携带密钥 |
+| 人脸识别服务地址（face_service_url） | 留空=使用默认 `http://127.0.0.1:8090`；可填独立 face-service 或**边缘盒**地址 |
+| 人脸识别服务密钥（face_service_key） | 两种鉴权：纯密钥→ `X-API-Key` 头（face-service）；`user:pass` 形式→ **HTTP Basic Auth**（边缘盒 Web 界面方式，如 `admin:密码`） |
+
+### 3.1 两种接入方式
+
+- **独立 face-service（推荐）**：地址填 `http://<face-service>:8090`，密钥填其 `FACE_SERVICE_API_KEY`；
+- **直接对接边缘盒**：地址填 `http://<edge-box>:8180`，密钥填 `admin:边缘盒web密码`（Basic Auth）。
+  边缘盒需为包含 `/api/face/extract` 接口的版本；无摄像头/无 OpenCV 时也可用 Mock 后端联调。
 
 - 配置保存在 `system_configs` 表，运行期在线生效，无需重启。
 - 也支持环境变量作为默认值：`FACE_SERVICE_URL` / `FACE_SERVICE_KEY`
@@ -152,6 +158,6 @@ cd admin-backend && go test ./...
 
 | 现象 | 处理 |
 |---|---|
-| 手动添加/导入报"人脸识别服务不可用" | 检查 face-service 是否启动（`curl :8090/api/health`）、系统配置的地址/密钥是否正确 |
+| 手动添加/导入报"人脸识别服务不可用" | 检查该地址服务是否启动（face-service `curl :8090/api/health`；边缘盒 `curl -u admin:密码 :8180/api/status`）、系统配置的地址/密钥是否正确 |
 | 上传照片报"未检测到人脸" | 换清晰正脸照片；确认 face-service 为真实 ONNX 引擎且模型正常 |
 | 导入后边缘盒识别不到新人员 | 特征向量空间不一致（换回与边缘盒同套模型）；或等待边缘盒增量同步（`since_version` 轮询） |
