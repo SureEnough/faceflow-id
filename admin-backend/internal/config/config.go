@@ -20,6 +20,9 @@ type Config struct {
 
 	ObjectRoot      string // 对象存储本地根目录（生产可接 MinIO/S3，见 docs/deployment.md）
 	ObjectPublicURL string // 对象公网访问前缀（static.example.com）
+
+	FaceServiceURL string // 人脸识别服务默认地址（系统配置 face_service_url 为空时使用；默认 http://127.0.0.1:8090）
+	FaceServiceKey string // 人脸识别服务默认密钥（环境变量 FACE_SERVICE_KEY，可被系统配置覆盖）
 }
 
 func Load() Config {
@@ -40,6 +43,9 @@ func Load() Config {
 
 		ObjectRoot:      os.Getenv("OBJECT_ROOT"),
 		ObjectPublicURL: os.Getenv("OBJECT_PUBLIC_URL"),
+
+		FaceServiceURL: getenv("FACE_SERVICE_URL", "http://127.0.0.1:8090"),
+		FaceServiceKey: os.Getenv("FACE_SERVICE_KEY"),
 	}
 	return cfg
 }

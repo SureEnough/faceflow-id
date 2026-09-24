@@ -40,6 +40,7 @@ const MENU: MenuItem[] = [
     children: [
       { key: '/tokens', icon: <SafetyOutlined />, label: '令牌管理', roles: ['admin', 'operator'] },
       { key: '/users', icon: <TeamOutlined />, label: '账号管理', roles: ['admin'] },
+      { key: '/system-config', icon: <SettingOutlined />, label: '系统配置', roles: ['admin'] },
       { key: '/audit-logs', icon: <FileSearchOutlined />, label: '审计日志', roles: ['admin'] },
     ],
   },

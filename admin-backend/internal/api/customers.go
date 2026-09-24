@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"admin-backend/internal/faceservice"
 	"admin-backend/internal/search"
 	"admin-backend/internal/service"
 	"admin-backend/internal/storage"
@@ -38,6 +40,7 @@ func staffHash(staffNo string) string {
 
 type customerReq struct {
 	PersonType     int8   `json:"person_type" binding:"oneof=0 1"`
+	StoreID        uint64 `json:"store_id"`
 	Name           string `json:"name" binding:"required"`
 	IDCardNo       string `json:"id_card_no"`
 	StaffNo        string `json:"staff_no"`
@@ -45,9 +48,33 @@ type customerReq struct {
 	Gender         int8   `json:"gender"`
 	BirthDate      string `json:"birth_date"`
 	Address        string `json:"address"`
-	IDPhoto        string `json:"id_photo"`        // base64 jpg
-	LivePhoto      string `json:"live_photo"`      // base64 jpg
-	FaceFeatureB64 string `json:"face_feature"`    // base64 512*float32
+	IDPhoto        string `json:"id_photo"`        // base64 jpg/png
+	LivePhoto      string `json:"live_photo"`      // base64 jpg/png
+	FaceFeatureB64 string `json:"face_feature"`    // base64 512*float32（可空：有照片时后台自动提取）
+}
+
+// extractFaceFeature 由 base64 头像调用 face-service 提取人脸特征。
+// 未检测到人脸 / 服务不可用 / 图片无效时返回明确错误。
+func (s *Server) extractFaceFeature(ctx context.Context, b64 string) ([]byte, error) {
+	if strings.TrimSpace(b64) == "" {
+		return nil, errors.New("empty photo")
+	}
+	img, err := base64.StdEncoding.DecodeString(b64)
+	if err != nil || len(img) == 0 {
+		return nil, errors.New("invalid image base64")
+	}
+	cli := faceservice.New(s.faceServiceCfg())
+	feat, err := cli.Extract(ctx, img, "image/jpeg")
+	if err != nil {
+		if errors.Is(err, faceservice.ErrNoFace) {
+			return nil, errors.New("头像中未检测到人脸，请上传清晰正脸照片")
+		}
+		return nil, errors.New("人脸识别服务不可用：" + err.Error())
+	}
+	if len(feat) == 0 {
+		return nil, errors.New("人脸识别服务返回空特征")
+	}
+	return feat, nil
 }
 
 // GET /customers 分页查询人员库
@@ -70,6 +97,11 @@ func (s *Server) listCustomers(c *gin.Context) {
 	if v := c.Query("status"); v != "" {
 		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
 			q = q.Where("status = ?", n)
+		}
+	}
+	if v := c.Query("store_id"); v != "" {
+		if n, err := strconv.ParseUint(v, 10, 64); err == nil && n > 0 {
+			q = q.Where("store_id = ?", n)
 		}
 	}
 	if v := c.Query("staff_no"); v != "" {
@@ -110,11 +142,14 @@ func (s *Server) listCustomers(c *gin.Context) {
 	}
 	for i := range rows {
 		s.decryptCustomer(&rows[i])
+		s.fillCustomerPhotoURL(c.Request.Context(), &rows[i])
 	}
 	OK(c, gin.H{"total": total, "items": rows})
 }
 
 // POST /customers 新增人员档案（顾客 person_type=0 / 内部人员 person_type=1）
+// face_feature 可空：上传 id_photo/live_photo 时后台自动调用 face-service 提取特征；
+// 照片与特征均为空时允许建档（无识别能力，兼容骨架/手工场景）。
 // 顾客录入后同步触发历史来访回查并返回聚合结果。
 func (s *Server) createCustomer(c *gin.Context) {
 	var req customerReq
@@ -123,11 +158,29 @@ func (s *Server) createCustomer(c *gin.Context) {
 		return
 	}
 
-	feat, err := decodeFeature(req.FaceFeatureB64)
-	if err != nil {
-		Fail(c, http.StatusBadRequest, CodeParam, "face_feature invalid: "+err.Error())
-		return
+	var (
+		feat []byte
+		err  error
+	)
+	if req.FaceFeatureB64 != "" {
+		feat, err = decodeFeature(req.FaceFeatureB64)
+		if err != nil {
+			Fail(c, http.StatusBadRequest, CodeParam, "face_feature invalid: "+err.Error())
+			return
+		}
+	} else if req.IDPhoto != "" || req.LivePhoto != "" {
+		// 未提供特征但上传了照片：自动做人脸识别提取特征
+		photo := req.IDPhoto
+		if photo == "" {
+			photo = req.LivePhoto
+		}
+		feat, err = s.extractFaceFeature(c.Request.Context(), photo)
+		if err != nil {
+			Fail(c, http.StatusBadRequest, CodeFaceSvc, err.Error())
+			return
+		}
 	}
+	// 照片与特征均为空：feat=nil 允许建档（骨架模式）
 
 	if req.PersonType == storage.PersonTypeCustomer && req.IDCardNo == "" {
 		Fail(c, http.StatusBadRequest, CodeParam, "id_card_no is required for customer")
@@ -146,6 +199,7 @@ func (s *Server) createCustomer(c *gin.Context) {
 	now := time.Now().Unix()
 	cust := storage.Customer{
 		PersonType:    req.PersonType,
+		StoreID:       req.StoreID,
 		StaffNo:       strPtr(req.StaffNo),
 		Department:    req.Department,
 		Gender:        req.Gender,
@@ -168,9 +222,11 @@ func (s *Server) createCustomer(c *gin.Context) {
 		Fail(c, http.StatusInternalServerError, CodeServer, err.Error())
 		return
 	}
-	if cust.IDCardNoEnc, err = s.cip.Encrypt(req.IDCardNo); err != nil {
-		Fail(c, http.StatusInternalServerError, CodeServer, err.Error())
-		return
+	if req.IDCardNo != "" {
+		if cust.IDCardNoEnc, err = s.cip.Encrypt(req.IDCardNo); err != nil {
+			Fail(c, http.StatusInternalServerError, CodeServer, err.Error())
+			return
+		}
 	}
 	if cust.AddressEnc, err = s.cip.Encrypt(req.Address); err != nil {
 		Fail(c, http.StatusInternalServerError, CodeServer, err.Error())
@@ -185,7 +241,7 @@ func (s *Server) createCustomer(c *gin.Context) {
 
 	// 顾客：录入后同步历史回查
 	var history *storage.Visits
-	if req.PersonType == storage.PersonTypeCustomer {
+	if req.PersonType == storage.PersonTypeCustomer && len(feat) > 0 {
 		f := make(search.Feature, len(feat))
 		if n, err := search.Decode(feat); err == nil {
 			copy(f, n)
@@ -228,7 +284,9 @@ type customerUpdateReq struct {
 	Gender         *int8   `json:"gender"`
 	BirthDate      string  `json:"birth_date"`
 	Status         *int8   `json:"status"`
+	StoreID        *uint64 `json:"store_id"`
 	FaceFeatureB64 string  `json:"face_feature"`
+	IDPhoto        string  `json:"id_photo"` // base64，上传头像时自动提取特征替换主特征
 }
 
 // PUT /customers/:id 更新档案
@@ -276,11 +334,24 @@ func (s *Server) updateCustomer(c *gin.Context) {
 	if req.Status != nil {
 		updates["status"] = *req.Status
 	}
+	if req.StoreID != nil {
+		updates["store_id"] = *req.StoreID
+	}
 	if req.FaceFeatureB64 != "" {
 		if feat, err := decodeFeature(req.FaceFeatureB64); err == nil {
 			updates["face_feature"] = feat
 			updates["version"] = gorm.Expr("version + 1")
 		}
+	} else if req.IDPhoto != "" {
+		// 上传头像：自动提取特征替换主特征
+		feat, err := s.extractFaceFeature(c.Request.Context(), req.IDPhoto)
+		if err != nil {
+			Fail(c, http.StatusBadRequest, CodeFaceSvc, err.Error())
+			return
+		}
+		updates["face_feature"] = feat
+		updates["version"] = gorm.Expr("version + 1")
+		updates["id_photo_path"] = s.saveImage(c.Request.Context(), req.IDPhoto, "id_photos")
 	}
 	if err := s.db.Model(&storage.Customer{}).Where("id = ?", id).Updates(updates).Error; err != nil {
 		Fail(c, http.StatusInternalServerError, CodeServer, err.Error())
@@ -326,15 +397,33 @@ func (s *Server) appendCustomerFeature(c *gin.Context) {
 		return
 	}
 	var req struct {
-		FaceFeatureB64 string `json:"face_feature" binding:"required"`
+		FaceFeatureB64 string `json:"face_feature"`
+		IDPhoto        string `json:"id_photo"` // base64，上传头像时自动提取特征追加
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		Fail(c, http.StatusBadRequest, CodeParam, err.Error())
 		return
 	}
-	feat, err := decodeFeature(req.FaceFeatureB64)
-	if err != nil {
-		Fail(c, http.StatusBadRequest, CodeParam, "face_feature invalid")
+	var feat []byte
+	if req.FaceFeatureB64 != "" {
+		feat, err = decodeFeature(req.FaceFeatureB64)
+		if err != nil {
+			Fail(c, http.StatusBadRequest, CodeParam, "face_feature invalid")
+			return
+		}
+	} else if req.IDPhoto != "" {
+		feat, err = s.extractFaceFeature(c.Request.Context(), req.IDPhoto)
+		if err != nil {
+			Fail(c, http.StatusBadRequest, CodeFaceSvc, err.Error())
+			return
+		}
+		if s.obj != nil {
+			// 追加照片也转存对象存储（作为现场补采照片）
+			_ = s.db.Model(&storage.Customer{}).Where("id = ?", id).
+				Update("live_photo_path", s.saveImage(c.Request.Context(), req.IDPhoto, "live_photos"))
+		}
+	} else {
+		Fail(c, http.StatusBadRequest, CodeParam, "face_feature or id_photo required")
 		return
 	}
 	cf := storage.CustomerFeature{CustomerID: id, FaceFeature: feat, Source: 1}
@@ -395,6 +484,20 @@ func decodeFeature(b64 string) ([]byte, error) {
 		return nil, errors.New("feature length != 512*4 bytes")
 	}
 	return b, nil
+}
+
+// fillCustomerPhotoURL 对象存储开启时，将照片 key 转为可访问 URL；
+// 未开启（照片=base64 文本）时保持原样由前端直接展示。
+func (s *Server) fillCustomerPhotoURL(ctx context.Context, c *storage.Customer) {
+	if s.obj == nil {
+		return
+	}
+	if c.IDPhotoPath != "" {
+		c.IDPhotoURL = s.obj.URL(ctx, c.IDPhotoPath)
+	}
+	if c.LivePhotoPath != "" {
+		c.LivePhotoURL = s.obj.URL(ctx, c.LivePhotoPath)
+	}
 }
 
 // decryptCustomer 解密敏感字段到响应辅助字段

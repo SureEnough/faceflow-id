@@ -29,6 +29,8 @@ export const DEVICE_TYPE_TEXT: Record<DeviceType, string> = {
 export interface Customer {
   id: number
   person_type: PersonType
+  store_id?: number
+  store_name?: string
   name: string
   id_card_no?: string
   staff_no?: string
@@ -36,6 +38,10 @@ export interface Customer {
   gender?: number
   birth_date?: number
   address?: string
+  id_photo_path?: string
+  id_photo_url?: string
+  live_photo_path?: string
+  live_photo_url?: string
   status: number
   version: number
   created_at: number
@@ -123,4 +129,26 @@ export interface VerifyRecord {
   created_at: string
   live_photo?: string
   live_photo_url?: string
+}
+/** 人员导入失败明细 */
+export interface ImportFailRow {
+  row: number
+  name: string
+  reason: string
+}
+
+/** 人员导入结果 */
+export interface ImportResult {
+  total: number
+  success: number
+  failed: ImportFailRow[]
+}
+
+/** 全局系统配置 */
+export interface SystemConfig {
+  face_service_url: string
+  face_service_key_set: boolean
+  effective_url: string
+  effective_key_used: boolean
+  face_service_default: string
 }

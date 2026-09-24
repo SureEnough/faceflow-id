@@ -15,6 +15,7 @@ import Tokens from './pages/Tokens'
 import AuditLogs from './pages/AuditLogs'
 import Stores from './pages/Stores'
 import Records from './pages/Records'
+import SystemConfig from './pages/SystemConfig'
 import { getToken } from './api/client'
 import 'antd/dist/reset.css'
 
@@ -39,6 +40,7 @@ createRoot(document.getElementById('root')!).render(
             <Route path="/stores" element={<Stores />} />
             <Route path="/records" element={<Records />} />
             <Route path="/tokens" element={<Tokens />} />
+            <Route path="/system-config" element={<SystemConfig />} />
             <Route path="/audit-logs" element={<AuditLogs />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

@@ -65,6 +65,7 @@ type Device struct {
 type Customer struct {
 	ID            uint64    `gorm:"primaryKey;autoIncrement" json:"id"`
 	PersonType    int8      `gorm:"not null;default:0;index" json:"person_type"`
+	StoreID       uint64    `gorm:"not null;default:0;index" json:"store_id"` // 归属门店，0=未分配
 	NameEnc       []byte    `gorm:"type:blob" json:"-"`           // AES-GCM 密文
 	IDCardNoEnc   []byte    `gorm:"type:blob;uniqueIndex" json:"-"` // 仅顾客
 	StaffNo       *string   `gorm:"size:32;uniqueIndex" json:"staff_no,omitempty"` // 仅内部人员，顾客为 NULL
@@ -85,6 +86,8 @@ type Customer struct {
 	Name       string  `gorm:"-" json:"name"`
 	IDCardNo   string  `gorm:"-" json:"id_card_no,omitempty"`
 	Address    string  `gorm:"-" json:"address,omitempty"`
+	IDPhotoURL string  `gorm:"-" json:"id_photo_url,omitempty"`   // 对象存储开启时照片可访问 URL
+	LivePhotoURL string `gorm:"-" json:"live_photo_url,omitempty"`
 	History    *Visits `gorm:"-" json:"history,omitempty"` // 录入时返回历史来访
 }
 
@@ -193,6 +196,18 @@ func AutoMigrate(db *gorm.DB) error {
 	return db.AutoMigrate(
 		&Store{}, &Device{}, &Customer{}, &CustomerFeature{},
 		&RecognitionLog{}, &VerifyRecord{}, &Visits{}, &User{}, &AuditLog{},
-		&TokenRecord{},
+		&TokenRecord{}, &SystemConfig{},
 	)
+}// SystemConfig 全局系统配置（key-value，运行期可在线修改）
+// 例如人脸识别服务（face-service）地址与密钥；未配置时使用内置默认。
+type SystemConfig struct {
+	Key       string `gorm:"primaryKey;size:64" json:"key"`
+	Value     string `gorm:"type:text" json:"value"`
+	UpdatedAt int64  `json:"updated_at"` // Unix 秒
 }
+
+// SystemConfig 常用键
+const (
+	SysKeyFaceServiceURL = "face_service_url" // 人脸识别服务接口地址，空=使用默认 face-service
+	SysKeyFaceServiceKey = "face_service_key" // 人脸识别服务密钥（脱敏展示）
+)

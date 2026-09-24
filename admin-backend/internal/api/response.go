@@ -24,12 +24,14 @@ func Fail(c *gin.Context, httpStatus, code int, msg string) {
 
 // 错误码（与文档 13.0 一致）
 const (
-	CodeParam   = 40001
-	CodeUnauth  = 40100
-	CodeForbid  = 40300
+	CodeParam    = 40001
+	CodeUnauth   = 40100
+	CodeForbid   = 40300
 	CodeNotFound = 40400
-	CodeRate    = 42900
-	CodeServer  = 50000
+	CodeRate     = 42900
+	CodeServer   = 50000
+	CodeFaceSvc  = 50201 // 人脸识别服务（face-service）调用失败
 )
+
 // itoa 整数转字符串（避免多次写 strconv）
 func itoa(v int) string { return strconv.Itoa(v) }

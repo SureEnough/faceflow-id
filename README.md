@@ -29,6 +29,8 @@ C++ / Go / React 三端一体：**边缘盒子人脸识别端 + 顾客录入电�
 | `admin-backend/scripts/demo_seed.py` | 一键演示数据（设备注册→历史轨迹→录入回查→统计） | ✅ |
 | `edge-box/` | **边缘盒 C++ 端**：多路视频/推理后端抽象/Mock+ONNX/IOU跟踪/虚拟线客流/匿名轨迹/断网缓存 | ✅ Smoke 通过 |
 | `enrollment-pc/` | **录入电脑端 C++ Qt**：读卡器抽象+模拟器/摄像头预览/1:1 核验/后台客户端 | 🚧 骨架（Qt 需目标机编译） |
+| `face-service/` | **Python 人脸特征服务**（FastAPI + ONNXRuntime）：头像→512 维特征，供人员管理手动添加/模板导入自动提取；Mock 模式可无模型联调 | ✅ |
+| `docs/face-service.md` | face-service 部署/后台配置/Excel 导入模板用法 | ✅ |
 
 ## 快速开始（一键演示）
 
@@ -44,6 +46,21 @@ cd admin-backend && python3 scripts/demo_seed.py
 cd admin-backend/web && npm install && npm run dev
 #   浏览器打开 http://localhost:5173 ，用 admin/admin123 登录
 ```
+
+## 人脸识别服务（face-service）
+
+人员管理的「手动添加」「模板导入」支持**上传头像后自动做人脸识别（提取 512 维特征）**，
+由 `face-service/`（Python）提供；管理后台可在 **系统管理 → 系统配置** 中配置其接口地址与密钥
+（未配置时回退默认 `http://127.0.0.1:8090`，可用 `FACE_SERVICE_URL` 覆写默认值）。
+
+```bash
+# face-service（联调模式，无模型）
+cd face-service && pip install -r requirements.txt
+FACE_SERVICE_MOCK=1 python3 -m uvicorn app:app --host 0.0.0.0 --port 8090
+# 真实推理：放置 models/det_10g.onnx + models/w600k_r50.onnx（与边缘盒同套模型）后直接启动
+```
+
+> 详见 [`docs/face-service.md`](docs/face-service.md)。
 
 ## 测试
 

@@ -60,6 +60,10 @@ func (s *Server) Router() *gin.Engine {
 			authed.GET("/export/flow.csv", requireRole("admin", "operator", "viewer"), s.exportFlowCSV)
 			authed.GET("/export/customers.csv", requireRole("admin", "operator", "viewer"), s.exportCustomersCSV)
 
+			// 全局系统配置：admin
+			authed.GET("/system/config", requireRole("admin"), s.getSystemConfig)
+			authed.PUT("/system/config", requireRole("admin"), s.updateSystemConfig)
+
 			// 门店：读任意用户 token；写 admin/operator；删 admin
 			authed.GET("/stores", s.listStores)
 			authed.POST("/stores", requireRole("admin", "operator"), s.createStore)
@@ -75,6 +79,8 @@ func (s *Server) Router() *gin.Engine {
 
 			// 人员录入：admin / operator
 			authed.POST("/customers", requireRole("admin", "operator"), s.createCustomer)
+			authed.GET("/customers/import/template", requireRole("admin", "operator"), s.downloadImportTemplate)
+			authed.POST("/customers/import", requireRole("admin", "operator"), s.importCustomers)
 			authed.POST("/customers/:id/features", requireRole("admin", "operator"), s.appendCustomerFeature)
 			// 人员档案修改/删除：admin
 			authed.PUT("/customers/:id", requireRole("admin"), s.updateCustomer)
